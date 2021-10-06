@@ -20,9 +20,9 @@ import persist from 'jslibs/alpinejs/v3/persist/dist/module.esm.js';
 
 // Set up and start Alpine.
 (function() {
-	// Register AlpineJS plugins.
-	Alpine.plugin(intersect);
-	Alpine.plugin(persist);
+    // Register AlpineJS plugins.
+    Alpine.plugin(intersect);
+    Alpine.plugin(persist);
 
     // Start Alpine.
     Alpine.start();
