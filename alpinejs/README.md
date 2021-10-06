@@ -30,3 +30,5 @@ import persist from 'jslibs/alpinejs/v3/persist/dist/module.esm.js';
 })();
 
 ```
+
+Note that this works great in combination with [Turbo](https://github.com/gohugoio/hugo-mod-jslibs/tree/master/turbo), but you would need to set up something like [these listeners](https://gist.github.com/bep/a9809f0cb119e44e8ddbe37dd1e58b50) to make it work properly.
