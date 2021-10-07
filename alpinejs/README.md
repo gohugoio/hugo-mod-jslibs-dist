@@ -1,6 +1,6 @@
 This module mounts [AlpineJS](https://github.com/alpinejs/alpine)'s `packages/.../dist` folders.
 
-See [Releases](https://github.com/gohugoio/hugo-mod-jslibs-dist/releases) for version information. The version scheme used is Alpine's version with the patch number multiplied with 100, e.g. `v3.4.2` becomes `alpinejs/v3.4.200`.
+See [Releases](https://github.com/gohugoio/hugo-mod-jslibs-dist/releases) for version information. We use the [Semver Pair](https://github.com/bep/semverpair) versioning scheme.
 
 The `packages` folder is mounted in `assets/jslibs/alpinejs/v3`.
 
