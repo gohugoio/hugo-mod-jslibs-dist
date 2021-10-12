@@ -1,0 +1,7 @@
+{
+    "name": "@alpinejs/docs",
+    "version": "3.4.2-revision.2",
+    "description": "The documentation for Alpine",
+    "author": "Caleb Porzio",
+    "license": "MIT"
+}
