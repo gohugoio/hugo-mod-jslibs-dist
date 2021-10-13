@@ -1342,23 +1342,6 @@ function elementBoundEffect(el) {
   }];
 }
 
-// packages/alpinejs/src/utils/walk.js
-function walk(el, callback) {
-  if (typeof ShadowRoot === "function" && el instanceof ShadowRoot) {
-    Array.from(el.children).forEach((el2) => walk(el2, callback));
-    return;
-  }
-  let skip = false;
-  callback(el, () => skip = true);
-  if (skip)
-    return;
-  let node = el.firstElementChild;
-  while (node) {
-    walk(node, callback, false);
-    node = node.nextElementSibling;
-  }
-}
-
 // packages/alpinejs/src/mutation.js
 var onAttributeAddeds = [];
 var onElRemoveds = [];
@@ -1489,14 +1472,6 @@ function onMutate(mutations) {
     if (addedNodes.includes(node))
       continue;
     onElRemoveds.forEach((i) => i(node));
-    if (node.localName === "body") {
-      node.querySelectorAll("[x-data]").forEach((el) => {
-        walk(el, (el2) => {
-          onElRemoveds.forEach((i) => i(el2));
-          el2.remove();
-        });
-      });
-    }
   }
   addedNodes = null;
   removedNodes = null;
@@ -1905,6 +1880,23 @@ function releaseNextTicks() {
 }
 function holdNextTicks() {
   isHolding = true;
+}
+
+// packages/alpinejs/src/utils/walk.js
+function walk(el, callback) {
+  if (typeof ShadowRoot === "function" && el instanceof ShadowRoot) {
+    Array.from(el.children).forEach((el2) => walk(el2, callback));
+    return;
+  }
+  let skip = false;
+  callback(el, () => skip = true);
+  if (skip)
+    return;
+  let node = el.firstElementChild;
+  while (node) {
+    walk(node, callback, false);
+    node = node.nextElementSibling;
+  }
 }
 
 // packages/alpinejs/src/utils/warn.js
