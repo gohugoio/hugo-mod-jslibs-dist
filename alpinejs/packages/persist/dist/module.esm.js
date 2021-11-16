@@ -1,9 +1,9 @@
 // packages/persist/src/index.js
 function src_default(Alpine) {
-  Alpine.magic("persist", (el, {interceptor}) => {
+  let persist = () => {
     let alias;
     let storage = localStorage;
-    return interceptor((initialValue, getter, setter, path, key) => {
+    return Alpine.interceptor((initialValue, getter, setter, path, key) => {
       let lookup = alias || `_x_${path}`;
       let initial = storageHas(lookup, storage) ? storageGet(lookup, storage) : initialValue;
       setter(initial);
@@ -22,7 +22,9 @@ function src_default(Alpine) {
         return func;
       };
     });
-  });
+  };
+  Object.defineProperty(Alpine, "$persist", {get: () => persist()});
+  Alpine.magic("persist", persist);
 }
 function storageHas(key, storage) {
   return storage.getItem(key) !== null;
