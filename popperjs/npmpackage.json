@@ -1,0 +1,9 @@
+{
+  "name": "@popperjs/core",
+  "version": "2.11.0",
+  "dependencies": null,
+  "dist": {
+    "shasum": "6734f8ebc106a0860dff7f92bf90df193f0935d7",
+    "tarball": "https://registry.npmjs.org/@popperjs/core/-/core-2.11.0.tgz"
+  }
+}
