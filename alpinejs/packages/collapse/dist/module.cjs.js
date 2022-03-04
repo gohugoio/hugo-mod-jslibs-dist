@@ -19,7 +19,7 @@ function src_default(Alpine) {
     if (!el._x_isShown)
       el.style.height = `${floor}px`;
     if (!el._x_isShown)
-      el.style.removeProperty("display");
+      el.hidden = true;
     if (!el._x_isShown)
       el.style.overflow = "hidden";
     let setFunction = (el2, styles) => {
@@ -28,7 +28,6 @@ function src_default(Alpine) {
       } : revertFunction;
     };
     let transitionStyles = {
-      overflow: "hidden",
       transitionProperty: "height",
       transitionDuration: `${duration}s`,
       transitionTimingFunction: "cubic-bezier(0.4, 0.0, 0.2, 1)"
@@ -37,14 +36,11 @@ function src_default(Alpine) {
       in(before = () => {
       }, after = () => {
       }) {
+        el.hidden = false;
+        el.style.display = null;
         let current = el.getBoundingClientRect().height;
-        Alpine.setStyles(el, {
-          height: "auto"
-        });
+        el.style.height = "auto";
         let full = el.getBoundingClientRect().height;
-        Alpine.setStyles(el, {
-          overflow: null
-        });
         if (current === full) {
           current = floor;
         }
@@ -53,6 +49,9 @@ function src_default(Alpine) {
           start: {height: current + "px"},
           end: {height: full + "px"}
         }, () => el._x_isShown = true, () => {
+          if (el.style.height == `${full}px`) {
+            el.style.overflow = null;
+          }
         });
       },
       out(before = () => {
@@ -63,13 +62,11 @@ function src_default(Alpine) {
           during: transitionStyles,
           start: {height: full + "px"},
           end: {height: floor + "px"}
-        }, () => {
-        }, () => {
+        }, () => el.style.overflow = "hidden", () => {
           el._x_isShown = false;
           if (el.style.height == `${floor}px`) {
-            Alpine.nextTick(() => Alpine.setStyles(el, {
-              overflow: "hidden"
-            }));
+            el.style.display = "none";
+            el.hidden = true;
           }
         });
       }
