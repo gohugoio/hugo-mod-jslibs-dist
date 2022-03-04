@@ -11,6 +11,11 @@
       queue.push(job);
     queueFlush();
   }
+  function dequeueJob(job) {
+    let index = queue.indexOf(job);
+    if (index !== -1)
+      queue.splice(index, 1);
+  }
   function queueFlush() {
     if (!flushing && !flushPending) {
       flushPending = true;
@@ -84,8 +89,15 @@
   function onElAdded(callback) {
     onElAddeds.push(callback);
   }
-  function onElRemoved(callback) {
-    onElRemoveds.push(callback);
+  function onElRemoved(el, callback) {
+    if (typeof callback === "function") {
+      if (!el._x_cleanups)
+        el._x_cleanups = [];
+      el._x_cleanups.push(callback);
+    } else {
+      callback = el;
+      onElRemoveds.push(callback);
+    }
   }
   function onAttributesAdded(callback) {
     onAttributeAddeds.push(callback);
@@ -198,16 +210,34 @@
     addedAttributes.forEach((attrs, el) => {
       onAttributeAddeds.forEach((i) => i(el, attrs));
     });
-    for (let node of addedNodes) {
-      if (removedNodes.includes(node))
-        continue;
-      onElAddeds.forEach((i) => i(node));
-    }
     for (let node of removedNodes) {
       if (addedNodes.includes(node))
         continue;
       onElRemoveds.forEach((i) => i(node));
+      if (node._x_cleanups) {
+        while (node._x_cleanups.length)
+          node._x_cleanups.pop()();
+      }
     }
+    addedNodes.forEach((node) => {
+      node._x_ignoreSelf = true;
+      node._x_ignore = true;
+    });
+    for (let node of addedNodes) {
+      if (removedNodes.includes(node))
+        continue;
+      if (!node.isConnected)
+        continue;
+      delete node._x_ignoreSelf;
+      delete node._x_ignore;
+      onElAddeds.forEach((i) => i(node));
+      node._x_ignore = true;
+      node._x_ignoreSelf = true;
+    }
+    addedNodes.forEach((node) => {
+      delete node._x_ignoreSelf;
+      delete node._x_ignore;
+    });
     addedNodes = null;
     removedNodes = null;
     addedAttributes = null;
@@ -215,15 +245,18 @@
   }
 
   // packages/alpinejs/src/scope.js
+  function scope(node) {
+    return mergeProxies(closestDataStack(node));
+  }
   function addScopeToNode(node, data2, referenceNode) {
     node._x_dataStack = [data2, ...closestDataStack(referenceNode || node)];
     return () => {
       node._x_dataStack = node._x_dataStack.filter((i) => i !== data2);
     };
   }
-  function refreshScope(element, scope) {
+  function refreshScope(element, scope2) {
     let existingScope = element._x_dataStack[0];
-    Object.entries(scope).forEach(([key, value]) => {
+    Object.entries(scope2).forEach(([key, value]) => {
       existingScope[key] = value;
     });
   }
@@ -359,7 +392,10 @@
     Object.entries(magics).forEach(([name, callback]) => {
       Object.defineProperty(obj, `$${name}`, {
         get() {
-          return callback(el, {Alpine: alpine_default, interceptor});
+          let [utilities, cleanup2] = getElementBoundUtilities(el);
+          utilities = {interceptor, ...utilities};
+          onElRemoved(el, cleanup2);
+          return callback(el, utilities);
         },
         enumerable: false
       });
@@ -416,8 +452,8 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
   }
   function generateEvaluatorFromFunction(dataStack, func) {
     return (receiver = () => {
-    }, {scope = {}, params = []} = {}) => {
-      let result = func.apply(mergeProxies([scope, ...dataStack]), params);
+    }, {scope: scope2 = {}, params = []} = {}) => {
+      let result = func.apply(mergeProxies([scope2, ...dataStack]), params);
       runIfTypeOfFunction(receiver, result);
     };
   }
@@ -444,27 +480,28 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
   function generateEvaluatorFromString(dataStack, expression, el) {
     let func = generateFunctionFromString(expression, el);
     return (receiver = () => {
-    }, {scope = {}, params = []} = {}) => {
+    }, {scope: scope2 = {}, params = []} = {}) => {
       func.result = void 0;
       func.finished = false;
-      let completeScope = mergeProxies([scope, ...dataStack]);
+      let completeScope = mergeProxies([scope2, ...dataStack]);
       if (typeof func === "function") {
         let promise = func(func, completeScope).catch((error2) => handleError(error2, el, expression));
         if (func.finished) {
           runIfTypeOfFunction(receiver, func.result, completeScope, params, el);
+          func.result = void 0;
         } else {
           promise.then((result) => {
             runIfTypeOfFunction(receiver, result, completeScope, params, el);
-          }).catch((error2) => handleError(error2, el, expression));
+          }).catch((error2) => handleError(error2, el, expression)).finally(() => func.result = void 0);
         }
       }
     };
   }
-  function runIfTypeOfFunction(receiver, value, scope, params, el) {
+  function runIfTypeOfFunction(receiver, value, scope2, params, el) {
     if (typeof value === "function") {
-      let result = value.apply(scope, params);
+      let result = value.apply(scope2, params);
       if (result instanceof Promise) {
-        result.then((i) => runIfTypeOfFunction(receiver, i, scope, params)).catch((error2) => handleError(error2, el, value));
+        result.then((i) => runIfTypeOfFunction(receiver, i, scope2, params)).catch((error2) => handleError(error2, el, value));
       } else {
         receiver(result);
       }
@@ -515,10 +552,7 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     callback(flushHandlers);
     stopDeferring();
   }
-  function getDirectiveHandler(el, directive2) {
-    let noop = () => {
-    };
-    let handler3 = directiveHandlers[directive2.type] || noop;
+  function getElementBoundUtilities(el) {
     let cleanups = [];
     let cleanup2 = (callback) => cleanups.push(callback);
     let [effect3, cleanupEffect] = elementBoundEffect(el);
@@ -531,7 +565,14 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
       evaluate: evaluate.bind(evaluate, el)
     };
     let doCleanup = () => cleanups.forEach((i) => i());
-    onAttributeRemoved(el, directive2.original, doCleanup);
+    return [utilities, doCleanup];
+  }
+  function getDirectiveHandler(el, directive2) {
+    let noop = () => {
+    };
+    let handler3 = directiveHandlers[directive2.type] || noop;
+    let [utilities, cleanup2] = getElementBoundUtilities(el);
+    onAttributeRemoved(el, directive2.original, cleanup2);
     let fullHandler = () => {
       if (el._x_ignore || el._x_ignoreSelf)
         return;
@@ -539,7 +580,7 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
       handler3 = handler3.bind(handler3, el, directive2, utilities);
       isDeferringHandlers ? directiveHandlerStacks.get(currentHandlerStackKey).push(handler3) : handler3();
     };
-    fullHandler.runCleanups = doCleanup;
+    fullHandler.runCleanups = cleanup2;
     return fullHandler;
   }
   var startingWith = (subject, replacement) => ({name, value}) => {
@@ -587,14 +628,17 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     "ignore",
     "ref",
     "data",
+    "id",
     "bind",
     "init",
     "for",
     "model",
+    "modelable",
     "transition",
     "show",
     "if",
     DEFAULT,
+    "teleport",
     "element"
   ];
   function byPriority(a, b) {
@@ -663,7 +707,7 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     dispatch(document, "alpine:initializing");
     startObservingMutations();
     onElAdded((el) => initTree(el, walk));
-    onElRemoved((el) => nextTick(() => destroyTree(el)));
+    onElRemoved((el) => destroyTree(el));
     onAttributesAdded((el, attrs) => {
       directives(el, attrs).forEach((handle) => handle());
     });
@@ -688,14 +732,22 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     initSelectorCallbacks.push(selectorCallback);
   }
   function closestRoot(el, includeInitSelectors = false) {
+    return findClosest(el, (element) => {
+      const selectors = includeInitSelectors ? allSelectors() : rootSelectors();
+      if (selectors.some((selector) => element.matches(selector)))
+        return true;
+    });
+  }
+  function findClosest(el, callback) {
     if (!el)
       return;
-    const selectors = includeInitSelectors ? allSelectors() : rootSelectors();
-    if (selectors.some((selector) => el.matches(selector)))
+    if (callback(el))
       return el;
+    if (el._x_teleportBack)
+      el = el._x_teleportBack;
     if (!el.parentElement)
       return;
-    return closestRoot(el.parentElement, includeInitSelectors);
+    return findClosest(el.parentElement, callback);
   }
   function isRoot(el) {
     return rootSelectors().some((selector) => el.matches(selector));
@@ -770,7 +822,10 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     let previousStyles = {};
     Object.entries(value).forEach(([key, value2]) => {
       previousStyles[key] = el.style[key];
-      el.style.setProperty(kebabCase(key), value2);
+      if (!key.startsWith("--")) {
+        key = kebabCase(key);
+      }
+      el.style.setProperty(key, value2);
     });
     setTimeout(() => {
       if (el.style.length === 0) {
@@ -785,7 +840,7 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     let cache = el.getAttribute("style", value);
     el.setAttribute("style", value);
     return () => {
-      el.setAttribute("style", cache);
+      el.setAttribute("style", cache || "");
     };
   }
   function kebabCase(subject) {
@@ -1082,6 +1137,179 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     return rawValue;
   }
 
+  // packages/alpinejs/src/clone.js
+  var isCloning = false;
+  function skipDuringClone(callback, fallback = () => {
+  }) {
+    return (...args) => isCloning ? fallback(...args) : callback(...args);
+  }
+  function clone(oldEl, newEl) {
+    if (!newEl._x_dataStack)
+      newEl._x_dataStack = oldEl._x_dataStack;
+    isCloning = true;
+    dontRegisterReactiveSideEffects(() => {
+      cloneTree(newEl);
+    });
+    isCloning = false;
+  }
+  function cloneTree(el) {
+    let hasRunThroughFirstEl = false;
+    let shallowWalker = (el2, callback) => {
+      walk(el2, (el3, skip) => {
+        if (hasRunThroughFirstEl && isRoot(el3))
+          return skip();
+        hasRunThroughFirstEl = true;
+        callback(el3, skip);
+      });
+    };
+    initTree(el, shallowWalker);
+  }
+  function dontRegisterReactiveSideEffects(callback) {
+    let cache = effect;
+    overrideEffect((callback2, el) => {
+      let storedEffect = cache(callback2);
+      release(storedEffect);
+      return () => {
+      };
+    });
+    callback();
+    overrideEffect(cache);
+  }
+
+  // packages/alpinejs/src/utils/bind.js
+  function bind(el, name, value, modifiers = []) {
+    if (!el._x_bindings)
+      el._x_bindings = reactive({});
+    el._x_bindings[name] = value;
+    name = modifiers.includes("camel") ? camelCase(name) : name;
+    switch (name) {
+      case "value":
+        bindInputValue(el, value);
+        break;
+      case "style":
+        bindStyles(el, value);
+        break;
+      case "class":
+        bindClasses(el, value);
+        break;
+      default:
+        bindAttribute(el, name, value);
+        break;
+    }
+  }
+  function bindInputValue(el, value) {
+    if (el.type === "radio") {
+      if (el.attributes.value === void 0) {
+        el.value = value;
+      }
+      if (window.fromModel) {
+        el.checked = checkedAttrLooseCompare(el.value, value);
+      }
+    } else if (el.type === "checkbox") {
+      if (Number.isInteger(value)) {
+        el.value = value;
+      } else if (!Number.isInteger(value) && !Array.isArray(value) && typeof value !== "boolean" && ![null, void 0].includes(value)) {
+        el.value = String(value);
+      } else {
+        if (Array.isArray(value)) {
+          el.checked = value.some((val) => checkedAttrLooseCompare(val, el.value));
+        } else {
+          el.checked = !!value;
+        }
+      }
+    } else if (el.tagName === "SELECT") {
+      updateSelect(el, value);
+    } else {
+      if (el.value === value)
+        return;
+      el.value = value;
+    }
+  }
+  function bindClasses(el, value) {
+    if (el._x_undoAddedClasses)
+      el._x_undoAddedClasses();
+    el._x_undoAddedClasses = setClasses(el, value);
+  }
+  function bindStyles(el, value) {
+    if (el._x_undoAddedStyles)
+      el._x_undoAddedStyles();
+    el._x_undoAddedStyles = setStyles(el, value);
+  }
+  function bindAttribute(el, name, value) {
+    if ([null, void 0, false].includes(value) && attributeShouldntBePreservedIfFalsy(name)) {
+      el.removeAttribute(name);
+    } else {
+      if (isBooleanAttr(name))
+        value = name;
+      setIfChanged(el, name, value);
+    }
+  }
+  function setIfChanged(el, attrName, value) {
+    if (el.getAttribute(attrName) != value) {
+      el.setAttribute(attrName, value);
+    }
+  }
+  function updateSelect(el, value) {
+    const arrayWrappedValue = [].concat(value).map((value2) => {
+      return value2 + "";
+    });
+    Array.from(el.options).forEach((option) => {
+      option.selected = arrayWrappedValue.includes(option.value);
+    });
+  }
+  function camelCase(subject) {
+    return subject.toLowerCase().replace(/-(\w)/g, (match, char) => char.toUpperCase());
+  }
+  function checkedAttrLooseCompare(valueA, valueB) {
+    return valueA == valueB;
+  }
+  function isBooleanAttr(attrName) {
+    const booleanAttributes = [
+      "disabled",
+      "checked",
+      "required",
+      "readonly",
+      "hidden",
+      "open",
+      "selected",
+      "autofocus",
+      "itemscope",
+      "multiple",
+      "novalidate",
+      "allowfullscreen",
+      "allowpaymentrequest",
+      "formnovalidate",
+      "autoplay",
+      "controls",
+      "loop",
+      "muted",
+      "playsinline",
+      "default",
+      "ismap",
+      "reversed",
+      "async",
+      "defer",
+      "nomodule"
+    ];
+    return booleanAttributes.includes(attrName);
+  }
+  function attributeShouldntBePreservedIfFalsy(name) {
+    return !["aria-pressed", "aria-checked", "aria-expanded", "aria-selected"].includes(name);
+  }
+  function getBinding(el, name, fallback) {
+    if (el._x_bindings && el._x_bindings[name] !== void 0)
+      return el._x_bindings[name];
+    let attr = el.getAttribute(name);
+    if (attr === null)
+      return typeof fallback === "function" ? fallback() : fallback;
+    if (isBooleanAttr(name)) {
+      return !![name, "true"].includes(attr);
+    }
+    if (attr === "")
+      return true;
+    return attr;
+  }
+
   // packages/alpinejs/src/utils/debounce.js
   function debounce(func, wait) {
     var timeout;
@@ -1135,42 +1363,22 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     return stores;
   }
 
-  // packages/alpinejs/src/clone.js
-  var isCloning = false;
-  function skipDuringClone(callback, fallback = () => {
-  }) {
-    return (...args) => isCloning ? fallback(...args) : callback(...args);
+  // packages/alpinejs/src/binds.js
+  var binds = {};
+  function bind2(name, object) {
+    binds[name] = typeof object !== "function" ? () => object : object;
   }
-  function clone(oldEl, newEl) {
-    newEl._x_dataStack = oldEl._x_dataStack;
-    isCloning = true;
-    dontRegisterReactiveSideEffects(() => {
-      cloneTree(newEl);
-    });
-    isCloning = false;
-  }
-  function cloneTree(el) {
-    let hasRunThroughFirstEl = false;
-    let shallowWalker = (el2, callback) => {
-      walk(el2, (el3, skip) => {
-        if (hasRunThroughFirstEl && isRoot(el3))
-          return skip();
-        hasRunThroughFirstEl = true;
-        callback(el3, skip);
+  function injectBindingProviders(obj) {
+    Object.entries(binds).forEach(([name, callback]) => {
+      Object.defineProperty(obj, name, {
+        get() {
+          return (...args) => {
+            return callback(...args);
+          };
+        }
       });
-    };
-    initTree(el, shallowWalker);
-  }
-  function dontRegisterReactiveSideEffects(callback) {
-    let cache = effect;
-    overrideEffect((callback2, el) => {
-      let storedEffect = cache(callback2);
-      release(storedEffect);
-      return () => {
-      };
     });
-    callback();
-    overrideEffect(cache);
+    return obj;
   }
 
   // packages/alpinejs/src/datas.js
@@ -1206,19 +1414,23 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     get raw() {
       return raw;
     },
-    version: "3.5.1",
+    version: "3.9.1",
     flushAndStopDeferringMutations,
     disableEffectScheduling,
     stopObservingMutations,
+    destroyTree,
     setReactivityEngine,
+    closestDataStack,
     skipDuringClone,
     addRootSelector,
+    addInitSelector,
+    addScopeToNode,
     deferMutations,
     mapAttributes,
     evaluateLater,
     setEvaluator,
     mergeProxies,
-    destroyTree,
+    findClosest,
     closestRoot,
     interceptor,
     transition,
@@ -1230,13 +1442,17 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     evaluate,
     initTree,
     nextTick,
+    prefixed: prefix,
     prefix: setPrefix,
     plugin,
     magic,
     store,
     start,
     clone,
-    data
+    bound: getBinding,
+    $data: scope,
+    data,
+    bind: bind2
   };
   var alpine_default = Alpine;
 
@@ -1271,7 +1487,7 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     [3]: "FORWARDED"
   };
   var specialBooleanAttrs = `itemscope,allowfullscreen,formnovalidate,ismap,nomodule,novalidate,readonly`;
-  var isBooleanAttr = /* @__PURE__ */ makeMap(specialBooleanAttrs + `,async,autofocus,autoplay,controls,default,defer,disabled,hidden,loop,open,required,reversed,scoped,seamless,checked,muted,multiple,selected`);
+  var isBooleanAttr2 = /* @__PURE__ */ makeMap(specialBooleanAttrs + `,async,autofocus,autoplay,controls,default,defer,disabled,hidden,loop,open,required,reversed,scoped,seamless,checked,muted,multiple,selected`);
   var EMPTY_OBJ = true ? Object.freeze({}) : {};
   var EMPTY_ARR = true ? Object.freeze([]) : [];
   var extend = Object.assign;
@@ -1926,15 +2142,12 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
   magic("dispatch", (el) => dispatch.bind(dispatch, el));
 
   // packages/alpinejs/src/magics/$watch.js
-  magic("watch", (el) => (key, callback) => {
-    let evaluate2 = evaluateLater(el, key);
+  magic("watch", (el, {evaluateLater: evaluateLater2, effect: effect3}) => (key, callback) => {
+    let evaluate2 = evaluateLater2(key);
     let firstTime = true;
     let oldValue;
-    let [effect3, cleanupEffect] = elementBoundEffect(el);
-    onAttributeRemoved(el, key, cleanupEffect);
     effect3(() => evaluate2((value) => {
-      let div = document.createElement("div");
-      div.dataset.throwAway = value;
+      JSON.stringify(value);
       if (!firstTime) {
         queueMicrotask(() => {
           callback(value, oldValue);
@@ -1951,9 +2164,7 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
   magic("store", getStores);
 
   // packages/alpinejs/src/magics/$data.js
-  magic("data", (el) => {
-    return mergeProxies(closestDataStack(el));
-  });
+  magic("data", (el) => scope(el));
 
   // packages/alpinejs/src/magics/$root.js
   magic("root", (el) => closestRoot(el));
@@ -1976,8 +2187,87 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     return refObjects;
   }
 
+  // packages/alpinejs/src/ids.js
+  var globalIdMemo = {};
+  function findAndIncrementId(name) {
+    if (!globalIdMemo[name])
+      globalIdMemo[name] = 0;
+    return ++globalIdMemo[name];
+  }
+  function closestIdRoot(el, name) {
+    return findClosest(el, (element) => {
+      if (element._x_ids && element._x_ids[name])
+        return true;
+    });
+  }
+  function setIdRoot(el, name) {
+    if (!el._x_ids)
+      el._x_ids = {};
+    if (!el._x_ids[name])
+      el._x_ids[name] = findAndIncrementId(name);
+  }
+
+  // packages/alpinejs/src/magics/$id.js
+  magic("id", (el) => (name, key = null) => {
+    let root = closestIdRoot(el, name);
+    let id = root ? root._x_ids[name] : findAndIncrementId(name);
+    return key ? `${name}-${id}-${key}` : `${name}-${id}`;
+  });
+
   // packages/alpinejs/src/magics/$el.js
   magic("el", (el) => el);
+
+  // packages/alpinejs/src/directives/x-modelable.js
+  directive("modelable", (el, {expression}, {effect: effect3, evaluate: evaluate2, evaluateLater: evaluateLater2}) => {
+    let func = evaluateLater2(expression);
+    let innerGet = () => {
+      let result;
+      func((i) => result = i);
+      return result;
+    };
+    let evaluateInnerSet = evaluateLater2(`${expression} = __placeholder`);
+    let innerSet = (val) => evaluateInnerSet(() => {
+    }, {scope: {__placeholder: val}});
+    let initialValue = innerGet();
+    if (el._x_modelable_hook)
+      initialValue = el._x_modelable_hook(initialValue);
+    innerSet(initialValue);
+    queueMicrotask(() => {
+      if (!el._x_model)
+        return;
+      let outerGet = el._x_model.get;
+      let outerSet = el._x_model.set;
+      effect3(() => innerSet(outerGet()));
+      effect3(() => outerSet(innerGet()));
+    });
+  });
+
+  // packages/alpinejs/src/directives/x-teleport.js
+  directive("teleport", (el, {expression}, {cleanup: cleanup2}) => {
+    if (el.tagName.toLowerCase() !== "template")
+      warn("x-teleport can only be used on a <template> tag", el);
+    let target = document.querySelector(expression);
+    if (!target)
+      warn(`Cannot find x-teleport element for selector: "${expression}"`);
+    let clone2 = el.content.cloneNode(true).firstElementChild;
+    el._x_teleport = clone2;
+    clone2._x_teleportBack = el;
+    if (el._x_forwardEvents) {
+      el._x_forwardEvents.forEach((eventName) => {
+        clone2.addEventListener(eventName, (e) => {
+          e.stopPropagation();
+          el.dispatchEvent(new e.constructor(e.type, e));
+        });
+      });
+    }
+    addScopeToNode(clone2, {}, el);
+    mutateDom(() => {
+      target.appendChild(clone2);
+      initTree(clone2);
+      clone2._x_ignore = true;
+    });
+    cleanup2(() => clone2.remove());
+  });
 
   // packages/alpinejs/src/directives/x-ignore.js
   var handler = () => {
@@ -1992,127 +2282,6 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
 
   // packages/alpinejs/src/directives/x-effect.js
   directive("effect", (el, {expression}, {effect: effect3}) => effect3(evaluateLater(el, expression)));
-
-  // packages/alpinejs/src/utils/bind.js
-  function bind(el, name, value, modifiers = []) {
-    if (!el._x_bindings)
-      el._x_bindings = reactive({});
-    el._x_bindings[name] = value;
-    name = modifiers.includes("camel") ? camelCase(name) : name;
-    switch (name) {
-      case "value":
-        bindInputValue(el, value);
-        break;
-      case "style":
-        bindStyles(el, value);
-        break;
-      case "class":
-        bindClasses(el, value);
-        break;
-      default:
-        bindAttribute(el, name, value);
-        break;
-    }
-  }
-  function bindInputValue(el, value) {
-    if (el.type === "radio") {
-      if (el.attributes.value === void 0) {
-        el.value = value;
-      }
-      if (window.fromModel) {
-        el.checked = checkedAttrLooseCompare(el.value, value);
-      }
-    } else if (el.type === "checkbox") {
-      if (Number.isInteger(value)) {
-        el.value = value;
-      } else if (!Number.isInteger(value) && !Array.isArray(value) && typeof value !== "boolean" && ![null, void 0].includes(value)) {
-        el.value = String(value);
-      } else {
-        if (Array.isArray(value)) {
-          el.checked = value.some((val) => checkedAttrLooseCompare(val, el.value));
-        } else {
-          el.checked = !!value;
-        }
-      }
-    } else if (el.tagName === "SELECT") {
-      updateSelect(el, value);
-    } else {
-      if (el.value === value)
-        return;
-      el.value = value;
-    }
-  }
-  function bindClasses(el, value) {
-    if (el._x_undoAddedClasses)
-      el._x_undoAddedClasses();
-    el._x_undoAddedClasses = setClasses(el, value);
-  }
-  function bindStyles(el, value) {
-    if (el._x_undoAddedStyles)
-      el._x_undoAddedStyles();
-    el._x_undoAddedStyles = setStyles(el, value);
-  }
-  function bindAttribute(el, name, value) {
-    if ([null, void 0, false].includes(value) && attributeShouldntBePreservedIfFalsy(name)) {
-      el.removeAttribute(name);
-    } else {
-      if (isBooleanAttr2(name))
-        value = name;
-      setIfChanged(el, name, value);
-    }
-  }
-  function setIfChanged(el, attrName, value) {
-    if (el.getAttribute(attrName) != value) {
-      el.setAttribute(attrName, value);
-    }
-  }
-  function updateSelect(el, value) {
-    const arrayWrappedValue = [].concat(value).map((value2) => {
-      return value2 + "";
-    });
-    Array.from(el.options).forEach((option) => {
-      option.selected = arrayWrappedValue.includes(option.value);
-    });
-  }
-  function camelCase(subject) {
-    return subject.toLowerCase().replace(/-(\w)/g, (match, char) => char.toUpperCase());
-  }
-  function checkedAttrLooseCompare(valueA, valueB) {
-    return valueA == valueB;
-  }
-  function isBooleanAttr2(attrName) {
-    const booleanAttributes = [
-      "disabled",
-      "checked",
-      "required",
-      "readonly",
-      "hidden",
-      "open",
-      "selected",
-      "autofocus",
-      "itemscope",
-      "multiple",
-      "novalidate",
-      "allowfullscreen",
-      "allowpaymentrequest",
-      "formnovalidate",
-      "autoplay",
-      "controls",
-      "loop",
-      "muted",
-      "playsinline",
-      "default",
-      "ismap",
-      "reversed",
-      "async",
-      "defer",
-      "nomodule"
-    ];
-    return booleanAttributes.includes(attrName);
-  }
-  function attributeShouldntBePreservedIfFalsy(name) {
-    return !["aria-pressed", "aria-checked", "aria-expanded"].includes(name);
-  }
 
   // packages/alpinejs/src/utils/on.js
   function on(el, event, modifiers, callback) {
@@ -2345,11 +2514,11 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
 
   // packages/alpinejs/src/directives/x-init.js
   addInitSelector(() => `[${prefix("init")}]`);
-  directive("init", skipDuringClone((el, {expression}) => {
+  directive("init", skipDuringClone((el, {expression}, {evaluate: evaluate2}) => {
     if (typeof expression === "string") {
-      return !!expression.trim() && evaluate(el, expression, {}, false);
+      return !!expression.trim() && evaluate2(expression, {}, false);
     }
-    return evaluate(el, expression, {}, false);
+    return evaluate2(expression, {}, false);
   }));
 
   // packages/alpinejs/src/directives/x-text.js
@@ -2377,8 +2546,9 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
   // packages/alpinejs/src/directives/x-bind.js
   mapAttributes(startingWith(":", into(prefix("bind:"))));
   directive("bind", (el, {value, modifiers, expression, original}, {effect: effect3}) => {
-    if (!value)
+    if (!value) {
       return applyBindingsObject(el, expression, original, effect3);
+    }
     if (value === "key")
       return storeKeyForXFor(el, expression);
     let evaluate2 = evaluateLater(el, expression);
@@ -2389,32 +2559,29 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     }));
   });
   function applyBindingsObject(el, expression, original, effect3) {
+    let bindingProviders = {};
+    injectBindingProviders(bindingProviders);
     let getBindings = evaluateLater(el, expression);
     let cleanupRunners = [];
-    effect3(() => {
-      while (cleanupRunners.length)
-        cleanupRunners.pop()();
-      getBindings((bindings) => {
-        let attributes = Object.entries(bindings).map(([name, value]) => ({name, value}));
-        attributes = attributes.filter((attr) => {
-          return !(typeof attr.value === "object" && !Array.isArray(attr.value) && attr.value !== null);
-        });
-        let staticAttributes = attributesOnly(attributes);
-        attributes = attributes.map((attribute) => {
-          if (staticAttributes.find((attr) => attr.name === attribute.name)) {
-            return {
-              name: `x-bind:${attribute.name}`,
-              value: `"${attribute.value}"`
-            };
-          }
-          return attribute;
-        });
-        directives(el, attributes, original).map((handle) => {
-          cleanupRunners.push(handle.runCleanups);
-          handle();
-        });
+    while (cleanupRunners.length)
+      cleanupRunners.pop()();
+    getBindings((bindings) => {
+      let attributes = Object.entries(bindings).map(([name, value]) => ({name, value}));
+      let staticAttributes = attributesOnly(attributes);
+      attributes = attributes.map((attribute) => {
+        if (staticAttributes.find((attr) => attr.name === attribute.name)) {
+          return {
+            name: `x-bind:${attribute.name}`,
+            value: `"${attribute.value}"`
+          };
+        }
+        return attribute;
       });
-    });
+      directives(el, attributes, original).map((handle) => {
+        cleanupRunners.push(handle.runCleanups);
+        handle();
+      });
+    }, {scope: bindingProviders});
   }
   function storeKeyForXFor(el, expression) {
     el._x_keyExpression = expression;
@@ -2509,15 +2676,15 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
       let keys = [];
       if (isObject2(items)) {
         items = Object.entries(items).map(([key, value]) => {
-          let scope = getIterationScopeVariables(iteratorNames, value, key, items);
-          evaluateKey((value2) => keys.push(value2), {scope: {index: key, ...scope}});
-          scopes.push(scope);
+          let scope2 = getIterationScopeVariables(iteratorNames, value, key, items);
+          evaluateKey((value2) => keys.push(value2), {scope: {index: key, ...scope2}});
+          scopes.push(scope2);
         });
       } else {
         for (let i = 0; i < items.length; i++) {
-          let scope = getIterationScopeVariables(iteratorNames, items[i], i, items);
-          evaluateKey((value) => keys.push(value), {scope: {index: i, ...scope}});
-          scopes.push(scope);
+          let scope2 = getIterationScopeVariables(iteratorNames, items[i], i, items);
+          evaluateKey((value) => keys.push(value), {scope: {index: i, ...scope2}});
+          scopes.push(scope2);
         }
       }
       let adds = [];
@@ -2550,6 +2717,9 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
       }
       for (let i = 0; i < removes.length; i++) {
         let key = removes[i];
+        if (!!lookup[key]._x_effects) {
+          lookup[key]._x_effects.forEach(dequeueJob);
+        }
         lookup[key].remove();
         lookup[key] = null;
         delete lookup[key];
@@ -2562,7 +2732,9 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
         mutateDom(() => {
           elForSpot.after(marker);
           elInSpot.after(elForSpot);
+          elForSpot._x_currentIfEl && elForSpot.after(elForSpot._x_currentIfEl);
           marker.before(elInSpot);
+          elInSpot._x_currentIfEl && elInSpot.after(elInSpot._x_currentIfEl);
           marker.remove();
         });
         refreshScope(elForSpot, scopes[keys.indexOf(keyForSpot)]);
@@ -2570,10 +2742,12 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
       for (let i = 0; i < adds.length; i++) {
         let [lastKey2, index] = adds[i];
         let lastEl = lastKey2 === "template" ? templateEl : lookup[lastKey2];
-        let scope = scopes[index];
+        if (lastEl._x_currentIfEl)
+          lastEl = lastEl._x_currentIfEl;
+        let scope2 = scopes[index];
         let key = keys[index];
         let clone2 = document.importNode(templateEl.content, true).firstElementChild;
-        addScopeToNode(clone2, reactive(scope), templateEl);
+        addScopeToNode(clone2, reactive(scope2), templateEl);
         mutateDom(() => {
           lastEl.after(clone2);
           initTree(clone2);
@@ -2662,6 +2836,11 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
       });
       el._x_currentIfEl = clone2;
       el._x_undoIf = () => {
+        walk(clone2, (node) => {
+          if (!!node._x_effects) {
+            node._x_effects.forEach(dequeueJob);
+          }
+        });
         clone2.remove();
         delete el._x_currentIfEl;
       };
@@ -2679,11 +2858,23 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     cleanup2(() => el._x_undoIf && el._x_undoIf());
   });
 
+  // packages/alpinejs/src/directives/x-id.js
+  directive("id", (el, {expression}, {evaluate: evaluate2}) => {
+    let names = evaluate2(expression);
+    names.forEach((name) => setIdRoot(el, name));
+  });
+
   // packages/alpinejs/src/directives/x-on.js
   mapAttributes(startingWith("@", into(prefix("on:"))));
   directive("on", skipDuringClone((el, {value, modifiers, expression}, {cleanup: cleanup2}) => {
     let evaluate2 = expression ? evaluateLater(el, expression) : () => {
     };
+    if (el.tagName.toLowerCase() === "template") {
+      if (!el._x_forwardEvents)
+        el._x_forwardEvents = [];
+      if (!el._x_forwardEvents.includes(value))
+        el._x_forwardEvents.push(value);
+    }
     let removeListener = on(el, value, modifiers, (e) => {
       evaluate2(() => {
       }, {scope: {$event: e}, params: [e]});
@@ -2702,8 +2893,8 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
       return generateEvaluatorFromFunction(dataStack, expression);
     }
     let evaluator = (receiver = () => {
-    }, {scope = {}, params = []} = {}) => {
-      let completeScope = mergeProxies([scope, ...dataStack]);
+    }, {scope: scope2 = {}, params = []} = {}) => {
+      let completeScope = mergeProxies([scope2, ...dataStack]);
       if (completeScope[expression] !== void 0) {
         runIfTypeOfFunction(receiver, completeScope[expression], completeScope, params);
       }
