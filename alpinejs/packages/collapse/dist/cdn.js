@@ -1,12 +1,22 @@
 (() => {
   // packages/collapse/src/index.js
   function src_default(Alpine) {
-    Alpine.directive("collapse", (el, {expression, modifiers}, {effect, evaluateLater}) => {
+    Alpine.directive("collapse", collapse);
+    collapse.inline = (el, {modifiers}) => {
+      if (!modifiers.includes("min"))
+        return;
+      el._x_doShow = () => {
+      };
+      el._x_doHide = () => {
+      };
+    };
+    function collapse(el, {modifiers}) {
       let duration = modifierValue(modifiers, "duration", 250) / 1e3;
-      let floor = 0;
+      let floor = modifierValue(modifiers, "min", 0);
+      let fullyHide = !modifiers.includes("min");
       if (!el._x_isShown)
         el.style.height = `${floor}px`;
-      if (!el._x_isShown)
+      if (!el._x_isShown && fullyHide)
         el.hidden = true;
       if (!el._x_isShown)
         el.style.overflow = "hidden";
@@ -24,8 +34,10 @@
         in(before = () => {
         }, after = () => {
         }) {
-          el.hidden = false;
-          el.style.display = null;
+          if (fullyHide)
+            el.hidden = false;
+          if (fullyHide)
+            el.style.display = null;
           let current = el.getBoundingClientRect().height;
           el.style.height = "auto";
           let full = el.getBoundingClientRect().height;
@@ -52,14 +64,14 @@
             end: {height: floor + "px"}
           }, () => el.style.overflow = "hidden", () => {
             el._x_isShown = false;
-            if (el.style.height == `${floor}px`) {
+            if (el.style.height == `${floor}px` && fullyHide) {
               el.style.display = "none";
               el.hidden = true;
             }
           });
         }
       };
-    });
+    }
   }
   function modifierValue(modifiers, key, fallback) {
     if (modifiers.indexOf(key) === -1)
@@ -69,6 +81,11 @@
       return fallback;
     if (key === "duration") {
       let match = rawValue.match(/([0-9]+)ms/);
+      if (match)
+        return match[1];
+    }
+    if (key === "min") {
+      let match = rawValue.match(/([0-9]+)px/);
       if (match)
         return match[1];
     }

@@ -41,5 +41,7 @@ directive('data', skipDuringClone((el, { expression }, { cleanup }) => {
         cleanup2()
 
         reactiveData['destroy'] && evaluate(el, reactiveData['destroy'])
+
+        undo()
     })
 }))

@@ -29,8 +29,14 @@ export default function (Alpine) {
 function getThreshhold(modifiers) {
     if (modifiers.includes('full')) return 0.99
     if (modifiers.includes('half')) return 0.5
+    if (! modifiers.includes('threshold')) return 0
 
-    return 0
+    let threshold = modifiers[modifiers.indexOf('threshold') + 1]
+
+    if (threshold === '100') return 1
+    if (threshold === '0') return 0
+
+    return Number(`.${threshold}`)
 }
 
 export function getLengthValue(rawValue) {

@@ -3,6 +3,18 @@ import { injectMagics } from './magics'
 import { tryCatch, handleError } from './utils/error'
 import { onAttributeRemoved } from './mutation'
 
+let shouldAutoEvaluateFunctions = true
+
+export function dontAutoEvaluateFunctions(callback) {
+    let cache = shouldAutoEvaluateFunctions
+
+    shouldAutoEvaluateFunctions = false
+
+    callback()
+
+    shouldAutoEvaluateFunctions = cache
+}
+
 export function evaluate(el, expression, extras = {}) {
     let result
 
@@ -94,7 +106,7 @@ function generateEvaluatorFromString(dataStack, expression, el) {
 
         let completeScope = mergeProxies([ scope, ...dataStack ])
 
-        if( typeof func === 'function' ) {
+        if (typeof func === 'function' ) {
             let promise = func(func, completeScope).catch((error) => handleError(error, el, expression))
 
             // Check if the function ran synchronously,
@@ -118,7 +130,7 @@ function generateEvaluatorFromString(dataStack, expression, el) {
 }
 
 export function runIfTypeOfFunction(receiver, value, scope, params, el) {
-    if (typeof value === 'function') {
+    if (shouldAutoEvaluateFunctions && typeof value === 'function') {
         let result = value.apply(scope, params)
 
         if (result instanceof Promise) {

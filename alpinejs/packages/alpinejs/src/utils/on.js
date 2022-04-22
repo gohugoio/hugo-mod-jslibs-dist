@@ -28,6 +28,8 @@ export default function on (el, event, modifiers, callback) {
         handler = wrapHandler(handler, (next, e) => {
             if (el.contains(e.target)) return
 
+            if (e.target.isConnected === false) return
+
             if (el.offsetWidth < 1 && el.offsetHeight < 1) return
 
             // Additional check for special implementations like x-collapse
@@ -35,6 +37,14 @@ export default function on (el, event, modifiers, callback) {
             if (el._x_isShown === false) return
 
             next(e)
+        })
+    }
+
+    if (modifiers.includes('once')) {
+        handler = wrapHandler(handler, (next, e) => {
+            next(e)
+
+            listenerTarget.removeEventListener(event, handler, options)
         })
     }
 
@@ -61,14 +71,6 @@ export default function on (el, event, modifiers, callback) {
         let wait = isNumeric(nextModifier.split('ms')[0]) ? Number(nextModifier.split('ms')[0]) : 250
 
         handler = throttle(handler, wait)
-    }
-
-    if (modifiers.includes('once')) {
-        handler = wrapHandler(handler, (next, e) => {
-            next(e)
-
-            listenerTarget.removeEventListener(event, handler, options)
-        })
     }
 
     listenerTarget.addEventListener(event, handler, options)

@@ -26,7 +26,14 @@
       return 0.99;
     if (modifiers.includes("half"))
       return 0.5;
-    return 0;
+    if (!modifiers.includes("threshold"))
+      return 0;
+    let threshold = modifiers[modifiers.indexOf("threshold") + 1];
+    if (threshold === "100")
+      return 1;
+    if (threshold === "0")
+      return 0;
+    return Number(`.${threshold}`);
   }
   function getLengthValue(rawValue) {
     let match = rawValue.match(/^(-?[0-9]+)(px|%)?$/);

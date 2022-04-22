@@ -13,7 +13,7 @@ Here's an example of simple button that shows an alert when clicked.
 <button x-on:click="alert('Hello World!')">Say Hi</button>
 ```
 
-> `x-on` can only listen for events with lower case names, as HTML attribtes are case-insensitive. Writing `x-on:CLICK` will listen for an event named `click`. If you need to listen for a custom event with a camelCase name, you can use the [`.camel` helper](#camel) to work around this limitation. Alternatively, you can use  [`x-bind`](/directives/bind.md#bind-directives) to attach an `x-on` directive to an element in javascript code (where case will be preserved).
+> `x-on` can only listen for events with lower case names, as HTML attributes are case-insensitive. Writing `x-on:CLICK` will listen for an event named `click`. If you need to listen for a custom event with a camelCase name, you can use the [`.camel` helper](#camel) to work around this limitation. Alternatively, you can use  [`x-bind`](/directives/bind.md#bind-directives) to attach an `x-on` directive to an element in javascript code (where case will be preserved).
 
 <a name="shorthand-syntax"></a>
 ## Shorthand syntax
@@ -89,6 +89,7 @@ For easy reference, here is a list of common keys you may want to listen for.
 | `.caps-lock`                | Caps Lock                   |
 | `.equal`                    | Equal, `=`                  |
 | `.period`                   | Period, `.`                 |
+| `.slash`                    | Foward Slash, `/`           |
 
 <a name="custom-events"></a>
 ## Custom events
@@ -165,7 +166,7 @@ In the above example, clicking the button WON'T log the message. This is because
 
 In the above example, after showing the dropdown contents by clicking the "Toggle" button, you can close the dropdown by clicking anywhere on the page outside the content.
 
-This is because `.outside` is listening for clicks that DONT originate from the element it's registered on.
+This is because `.outside` is listening for clicks that DON'T originate from the element it's registered on.
 
 > It's worth noting that the `.outside` expression will only be evaluated when the element it's registered on is visible on the page. Otherwise, there would be nasty race conditions where clicking the "Toggle" button would also fire the `@click.outside` handler when it is not visible.
 

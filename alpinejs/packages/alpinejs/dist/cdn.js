@@ -76,6 +76,7 @@
         el._x_effects.delete(effectReference);
         release(effectReference);
       };
+      return effectReference;
     };
     return [wrappedEffect, () => {
       cleanup2();
@@ -427,6 +428,13 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
   }
 
   // packages/alpinejs/src/evaluator.js
+  var shouldAutoEvaluateFunctions = true;
+  function dontAutoEvaluateFunctions(callback) {
+    let cache = shouldAutoEvaluateFunctions;
+    shouldAutoEvaluateFunctions = false;
+    callback();
+    shouldAutoEvaluateFunctions = cache;
+  }
   function evaluate(el, expression, extras = {}) {
     let result;
     evaluateLater(el, expression)((value) => result = value, extras);
@@ -498,7 +506,7 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     };
   }
   function runIfTypeOfFunction(receiver, value, scope2, params, el) {
-    if (typeof value === "function") {
+    if (shouldAutoEvaluateFunctions && typeof value === "function") {
       let result = value.apply(scope2, params);
       if (result instanceof Promise) {
         result.then((i) => runIfTypeOfFunction(receiver, i, scope2, params)).catch((error2) => handleError(error2, el, value));
@@ -632,6 +640,7 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     "bind",
     "init",
     "for",
+    "mask",
     "model",
     "modelable",
     "transition",
@@ -660,11 +669,17 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
   // packages/alpinejs/src/nextTick.js
   var tickStack = [];
   var isHolding = false;
-  function nextTick(callback) {
-    tickStack.push(callback);
+  function nextTick(callback = () => {
+  }) {
     queueMicrotask(() => {
       isHolding || setTimeout(() => {
         releaseNextTicks();
+      });
+    });
+    return new Promise((res) => {
+      tickStack.push(() => {
+        callback();
+        res();
       });
     });
   }
@@ -1414,8 +1429,9 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     get raw() {
       return raw;
     },
-    version: "3.9.1",
+    version: "3.10.2",
     flushAndStopDeferringMutations,
+    dontAutoEvaluateFunctions,
     disableEffectScheduling,
     stopObservingMutations,
     destroyTree,
@@ -2146,7 +2162,7 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     let evaluate2 = evaluateLater2(key);
     let firstTime = true;
     let oldValue;
-    effect3(() => evaluate2((value) => {
+    let effectReference = effect3(() => evaluate2((value) => {
       JSON.stringify(value);
       if (!firstTime) {
         queueMicrotask(() => {
@@ -2158,6 +2174,7 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
       }
       firstTime = false;
     }));
+    el._x_effects.delete(effectReference);
   });
 
   // packages/alpinejs/src/magics/$store.js
@@ -2217,8 +2234,15 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
   // packages/alpinejs/src/magics/$el.js
   magic("el", (el) => el);
 
+  // packages/alpinejs/src/magics/index.js
+  warnMissingPluginMagic("Focus", "focus", "focus");
+  warnMissingPluginMagic("Persist", "persist", "persist");
+  function warnMissingPluginMagic(name, magicName, slug) {
+    magic(magicName, (el) => warn(`You can't use [$${directiveName}] without first installing the "${name}" plugin here: https://alpinejs.dev/plugins/${slug}`, el));
+  }
+
   // packages/alpinejs/src/directives/x-modelable.js
-  directive("modelable", (el, {expression}, {effect: effect3, evaluate: evaluate2, evaluateLater: evaluateLater2}) => {
+  directive("modelable", (el, {expression}, {effect: effect3, evaluateLater: evaluateLater2}) => {
     let func = evaluateLater2(expression);
     let innerGet = () => {
       let result;
@@ -2229,12 +2253,11 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     let innerSet = (val) => evaluateInnerSet(() => {
     }, {scope: {__placeholder: val}});
     let initialValue = innerGet();
-    if (el._x_modelable_hook)
-      initialValue = el._x_modelable_hook(initialValue);
     innerSet(initialValue);
     queueMicrotask(() => {
       if (!el._x_model)
         return;
+      el._x_removeModelListeners["default"]();
       let outerGet = el._x_model.get;
       let outerSet = el._x_model.set;
       effect3(() => innerSet(outerGet()));
@@ -2320,11 +2343,19 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
       handler3 = wrapHandler(handler3, (next, e) => {
         if (el.contains(e.target))
           return;
+        if (e.target.isConnected === false)
+          return;
         if (el.offsetWidth < 1 && el.offsetHeight < 1)
           return;
         if (el._x_isShown === false)
           return;
         next(e);
+      });
+    }
+    if (modifiers.includes("once")) {
+      handler3 = wrapHandler(handler3, (next, e) => {
+        next(e);
+        listenerTarget.removeEventListener(event, handler3, options);
       });
     }
     handler3 = wrapHandler(handler3, (next, e) => {
@@ -2344,12 +2375,6 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
       let nextModifier = modifiers[modifiers.indexOf("throttle") + 1] || "invalid-wait";
       let wait = isNumeric(nextModifier.split("ms")[0]) ? Number(nextModifier.split("ms")[0]) : 250;
       handler3 = throttle(handler3, wait);
-    }
-    if (modifiers.includes("once")) {
-      handler3 = wrapHandler(handler3, (next, e) => {
-        next(e);
-        listenerTarget.removeEventListener(event, handler3, options);
-      });
     }
     listenerTarget.addEventListener(event, handler3, options);
     return () => {
@@ -2438,7 +2463,10 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
         rightSideOfExpression: assigmentFunction
       }});
     });
-    cleanup2(() => removeListener());
+    if (!el._x_removeModelListeners)
+      el._x_removeModelListeners = {};
+    el._x_removeModelListeners["default"] = removeListener;
+    cleanup2(() => el._x_removeModelListeners["default"]());
     let evaluateSetModel = evaluateLater(el, `${expression} = __placeholder`);
     el._x_model = {
       get() {
@@ -2538,7 +2566,12 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     let evaluate2 = evaluateLater2(expression);
     effect3(() => {
       evaluate2((value) => {
-        el.innerHTML = value;
+        mutateDom(() => {
+          el.innerHTML = value;
+          el._x_ignoreSelf = true;
+          initTree(el);
+          delete el._x_ignoreSelf;
+        });
       });
     });
   });
@@ -2608,24 +2641,35 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
       cleanup1();
       cleanup22();
       reactiveData["destroy"] && evaluate(el, reactiveData["destroy"]);
+      undo();
     });
   }));
 
   // packages/alpinejs/src/directives/x-show.js
   directive("show", (el, {modifiers, expression}, {effect: effect3}) => {
     let evaluate2 = evaluateLater(el, expression);
-    let hide = () => mutateDom(() => {
-      el.style.display = "none";
+    if (!el._x_doHide)
+      el._x_doHide = () => {
+        mutateDom(() => el.style.display = "none");
+      };
+    if (!el._x_doShow)
+      el._x_doShow = () => {
+        mutateDom(() => {
+          if (el.style.length === 1 && el.style.display === "none") {
+            el.removeAttribute("style");
+          } else {
+            el.style.removeProperty("display");
+          }
+        });
+      };
+    let hide = () => {
+      el._x_doHide();
       el._x_isShown = false;
-    });
-    let show = () => mutateDom(() => {
-      if (el.style.length === 1 && el.style.display === "none") {
-        el.removeAttribute("style");
-      } else {
-        el.style.removeProperty("display");
-      }
+    };
+    let show = () => {
+      el._x_doShow();
       el._x_isShown = true;
-    });
+    };
     let clickAwayCompatibleShow = () => setTimeout(show);
     let toggle = once((value) => value ? show() : hide(), (value) => {
       if (typeof el._x_toggleAndCascadeWithTransitions === "function") {
@@ -2881,6 +2925,15 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     });
     cleanup2(() => removeListener());
   }));
+
+  // packages/alpinejs/src/directives/index.js
+  warnMissingPluginDirective("Collapse", "collapse", "collapse");
+  warnMissingPluginDirective("Intersect", "intersect", "intersect");
+  warnMissingPluginDirective("Focus", "trap", "focus");
+  warnMissingPluginDirective("Mask", "mask", "mask");
+  function warnMissingPluginDirective(name, directiveName2, slug) {
+    directive(directiveName2, (el) => warn(`You can't use [x-${directiveName2}] without first installing the "${name}" plugin here: https://alpinejs.dev/plugins/${slug}`, el));
+  }
 
   // packages/alpinejs/src/index.js
   alpine_default.setEvaluator(normalEvaluator);

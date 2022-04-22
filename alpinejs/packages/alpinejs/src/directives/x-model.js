@@ -25,12 +25,19 @@ directive('model', (el, { modifiers, expression }, { effect, cleanup }) => {
         }})
     })
 
-    cleanup(() => removeListener())
+    // Register the listener removal callback on the element, so that
+    // in addition to the cleanup function, x-modelable may call it.
+    // Also, make this a keyed object if we decide to reintroduce
+    // "named modelables" some time in a future Alpine version.
+    if (! el._x_removeModelListeners) el._x_removeModelListeners = {}
+    el._x_removeModelListeners['default'] = removeListener
+
+    cleanup(() => el._x_removeModelListeners['default']())
 
     // Allow programmatic overiding of x-model.
     let evaluateSetModel = evaluateLater(el, `${expression} = __placeholder`)
     el._x_model = {
-        get() { 
+        get() {
             let result
             evaluate(value => result = value)
             return result
@@ -73,7 +80,7 @@ function generateAssignmentFunction(el, modifiers, expression) {
     return (event, currentValue) => {
         return mutateDom(() => {
             // Check for event.detail due to an issue where IE11 handles other events as a CustomEvent.
-            // Safari autofill triggers event as CustomEvent and assigns value to target 
+            // Safari autofill triggers event as CustomEvent and assigns value to target
             // so we return event.target.value instead of event.detail
             if (event instanceof CustomEvent && event.detail !== undefined) {
                 return event.detail || event.target.value

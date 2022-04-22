@@ -1,5 +1,5 @@
 ---
-order: 1
+order: 2
 title: Intersect
 description: An Alpine convenience wrapper for Intersection Observer that allows you to easily react when an element enters the viewport.
 graph_image: https://alpinejs.dev/social_intersect.jpg
@@ -110,7 +110,7 @@ Sometimes it's useful to evaluate an expression only the first time an element e
 <a name="half"></a>
 ### .half
 
-Evaluates the expression once the intersection threshold exceeds `0.5`. 
+Evaluates the expression once the intersection threshold exceeds `0.5`.
 
 Useful for elements where it's important to show at least part of the element.
 
@@ -121,13 +121,30 @@ Useful for elements where it's important to show at least part of the element.
 <a name="full"></a>
 ### .full
 
-Evaluates the expression once the intersection threshold exceeds `0.99`. 
+Evaluates the expression once the intersection threshold exceeds `0.99`.
 
 Useful for elements where it's important to show the whole element.
 
 ```alpine
 <div x-intersect.full="shown = true">...</div> // when `0.99` of the element is in the viewport
 ```
+
+<a name="threshold"></a>
+### .threshold
+
+Allows you to control the `threshold` property of the underlying `IntersectionObserver`:
+
+This value should be in the range of "0-100". A value of "0" means: trigger an "intersection" if ANY part of the element enters the viewport (the default behavior). While a value of "100" means: don't trigger an "intersection" unless the entire element has entered the viewport.
+
+Any value in between is a percentage of those two extremes.
+
+For example if you want to trigger an intersection after half of the element has entered the page, you can use `.threshold.50`:
+
+```alpine
+<div x-intersect.threshold.50="shown = true">...</div> // when 50% of the element is in the viewport
+```
+
+If you wanted to trigger only when 5% of the element has entered the viewport, you could use: `.threshold.05`, and so on and so forth.
 
 <a name="margin"></a>
 ### .margin
