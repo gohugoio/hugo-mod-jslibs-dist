@@ -169,7 +169,7 @@ var require_dist = __commonJS((exports2) => {
     }
     return true;
   };
-  var tabbable2 = function tabbable3(el, options) {
+  var tabbable = function tabbable2(el, options) {
     options = options || {};
     var regularTabbables = [];
     var orderedTabbables = [];
@@ -220,7 +220,7 @@ var require_dist = __commonJS((exports2) => {
   exports2.focusable = focusable2;
   exports2.isFocusable = isFocusable2;
   exports2.isTabbable = isTabbable;
-  exports2.tabbable = tabbable2;
+  exports2.tabbable = tabbable;
 });
 
 // node_modules/focus-trap/dist/focus-trap.js
@@ -231,7 +231,7 @@ var require_focus_trap = __commonJS((exports2) => {
   */
   "use strict";
   Object.defineProperty(exports2, "__esModule", {value: true});
-  var tabbable2 = require_dist();
+  var tabbable = require_dist();
   function ownKeys(object, enumerableOnly) {
     var keys = Object.keys(object);
     if (Object.getOwnPropertySymbols) {
@@ -399,7 +399,7 @@ var require_focus_trap = __commonJS((exports2) => {
     };
     var updateTabbableNodes = function updateTabbableNodes2() {
       state.tabbableGroups = state.containers.map(function(container) {
-        var tabbableNodes = tabbable2.tabbable(container);
+        var tabbableNodes = tabbable.tabbable(container);
         if (tabbableNodes.length > 0) {
           return {
             container,
@@ -444,7 +444,7 @@ var require_focus_trap = __commonJS((exports2) => {
       }
       if (valueOrHandler(config.clickOutsideDeactivates, e)) {
         trap.deactivate({
-          returnFocus: config.returnFocusOnDeactivate && !tabbable2.isFocusable(e.target)
+          returnFocus: config.returnFocusOnDeactivate && !tabbable.isFocusable(e.target)
         });
         return;
       }
@@ -802,7 +802,8 @@ function src_default(Alpine) {
     let trap = (0, import_focus_trap.createFocusTrap)(el, {
       escapeDeactivates: false,
       allowOutsideClick: true,
-      fallbackFocus: () => el
+      fallbackFocus: () => el,
+      initialFocus: el.querySelector("[autofocus]")
     });
     let undoInert = () => {
     };

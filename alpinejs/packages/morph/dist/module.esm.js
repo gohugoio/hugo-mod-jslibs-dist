@@ -54,7 +54,9 @@ function dom(el) {
   return new DomManager(el);
 }
 function createElement(html) {
-  return document.createRange().createContextualFragment(html).firstElementChild;
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  return template.content.firstElementChild;
 }
 function textOrComment(el) {
   return el.nodeType === 3 || el.nodeType === 8;

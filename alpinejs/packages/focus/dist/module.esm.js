@@ -740,7 +740,8 @@ function src_default(Alpine) {
     let trap = createFocusTrap(el, {
       escapeDeactivates: false,
       allowOutsideClick: true,
-      fallbackFocus: () => el
+      fallbackFocus: () => el,
+      initialFocus: el.querySelector("[autofocus]")
     });
     let undoInert = () => {
     };

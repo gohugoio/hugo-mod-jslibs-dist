@@ -1,5 +1,5 @@
 import { createFocusTrap } from 'focus-trap'
-import { focusable, tabbable, isFocusable } from 'tabbable'
+import { focusable, isFocusable } from 'tabbable'
 
 export default function (Alpine) {
     let lastFocused
@@ -106,6 +106,7 @@ export default function (Alpine) {
                 escapeDeactivates: false,
                 allowOutsideClick: true,
                 fallbackFocus: () => el,
+                initialFocus: el.querySelector('[autofocus]')
             })
 
             let undoInert = () => {}
