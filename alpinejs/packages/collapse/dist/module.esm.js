@@ -1,7 +1,7 @@
 // packages/collapse/src/index.js
 function src_default(Alpine) {
   Alpine.directive("collapse", collapse);
-  collapse.inline = (el, {modifiers}) => {
+  collapse.inline = (el, { modifiers }) => {
     if (!modifiers.includes("min"))
       return;
     el._x_doShow = () => {
@@ -9,7 +9,7 @@ function src_default(Alpine) {
     el._x_doHide = () => {
     };
   };
-  function collapse(el, {modifiers}) {
+  function collapse(el, { modifiers }) {
     let duration = modifierValue(modifiers, "duration", 250) / 1e3;
     let floor = modifierValue(modifiers, "min", 0);
     let fullyHide = !modifiers.includes("min");
@@ -45,10 +45,10 @@ function src_default(Alpine) {
         }
         Alpine.transition(el, Alpine.setStyles, {
           during: transitionStyles,
-          start: {height: current + "px"},
-          end: {height: full + "px"}
+          start: { height: current + "px" },
+          end: { height: full + "px" }
         }, () => el._x_isShown = true, () => {
-          if (el.style.height == `${full}px`) {
+          if (el.getBoundingClientRect().height == full) {
             el.style.overflow = null;
           }
         });
@@ -59,8 +59,8 @@ function src_default(Alpine) {
         let full = el.getBoundingClientRect().height;
         Alpine.transition(el, setFunction, {
           during: transitionStyles,
-          start: {height: full + "px"},
-          end: {height: floor + "px"}
+          start: { height: full + "px" },
+          end: { height: floor + "px" }
         }, () => el.style.overflow = "hidden", () => {
           el._x_isShown = false;
           if (el.style.height == `${floor}px` && fullyHide) {

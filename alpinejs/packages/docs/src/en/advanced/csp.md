@@ -9,19 +9,26 @@ In order for Alpine to be able to execute plain strings from HTML attributes as 
 
 > Under the hood, Alpine doesn't actually use eval() itself because it's slow and problematic. Instead it uses Function declarations, which are much better, but still violate "unsafe-eval".
 
-In order to accommodate environments where this CSP is necessary, Alpine offers an alternate build that doesn't violate "unsafe-eval", but has a more restrictive syntax.
+In order to accommodate environments where this CSP is necessary, Alpine will offer an alternate build that doesn't violate "unsafe-eval", but has a more restrictive syntax.
 
 <a name="installation"></a>
 ## Installation
 
-Like all Alpine extensions, you can include this either via `<script>` tag or module import:
+The CSP build hasn’t been officially released yet. In the meantime, you may build it from source. To do this, clone the [`alpinejs/alpine`](https://github.com/alpinejs/alpine) repository and run:
+
+```shell
+npm install
+npm run build
+```
+
+This will generate a `/packages/csp/dist/` directory with the built files. After copying the appropriate file into your project, you can include it either via `<script>` tag or module import:
 
 <a name="script-tag"></a>
 ### Script tag
 
 ```alpine
 <html>
-    <script src="alpinejs/alpinejs-csp/cdn.js" defer></script>
+    <script src="/path/to/cdn.js" defer></script>
 </html>
 ```
 
@@ -29,7 +36,7 @@ Like all Alpine extensions, you can include this either via `<script>` tag or mo
 ### Module import
 
 ```js
-import Alpine from '@alpinejs/csp'
+import Alpine from './path/to/module.esm.js'
 
 window.Alpine = Alpine
 window.Alpine.start()

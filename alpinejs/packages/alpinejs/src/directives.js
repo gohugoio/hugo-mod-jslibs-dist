@@ -17,6 +17,20 @@ let directiveHandlers = {}
 
 export function directive(name, callback) {
     directiveHandlers[name] = callback
+
+    return {
+        before(directive) {
+            if (!directiveHandlers[directive]) {
+                console.warn(
+                    "Cannot find directive `${directive}`. "
+                    + "`${name}` will use the default order of execution"
+                );
+                return;
+            }
+            const pos = directiveOrder.indexOf(directive);
+            directiveOrder.splice(pos >= 0 ? pos : directiveOrder.indexOf('DEFAULT'), 0, name);
+        }
+    }
 }
 
 export function directives(el, attributes, originalAttributeOverride) {
@@ -168,7 +182,7 @@ let alpineAttributeRegex = () => (new RegExp(`^${prefixAsString}([^:^.]+)\\b`))
 function toParsedDirectives(transformedAttributeMap, originalAttributeOverride) {
     return ({ name, value }) => {
         let typeMatch = name.match(alpineAttributeRegex())
-        let valueMatch = name.match(/:([a-zA-Z0-9\-:]+)/)
+        let valueMatch = name.match(/:([a-zA-Z0-9\-_:]+)/)
         let modifiers = name.match(/\.[^.\]]+(?=[^\]]*$)/g) || []
         let original = originalAttributeOverride || transformedAttributeMap[name] || name
 
@@ -192,7 +206,6 @@ let directiveOrder = [
     'bind',
     'init',
     'for',
-    'mask',
     'model',
     'modelable',
     'transition',

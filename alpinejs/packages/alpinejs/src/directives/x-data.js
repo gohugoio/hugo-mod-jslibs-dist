@@ -2,7 +2,7 @@ import { directive, prefix } from '../directives'
 import { initInterceptors } from '../interceptor'
 import { injectDataProviders } from '../datas'
 import { addRootSelector } from '../lifecycle'
-import { skipDuringClone } from '../clone'
+import { shouldSkipRegisteringDataDuringClone } from '../clone'
 import { addScopeToNode } from '../scope'
 import { injectMagics, magic } from '../magics'
 import { reactive } from '../reactivity'
@@ -10,7 +10,9 @@ import { evaluate } from '../evaluator'
 
 addRootSelector(() => `[${prefix('data')}]`)
 
-directive('data', skipDuringClone((el, { expression }, { cleanup }) => {
+directive('data', ((el, { expression }, { cleanup }) => {
+    if (shouldSkipRegisteringDataDuringClone(el)) return
+
     expression = expression === '' ? '{}' : expression
 
     let magicContext = {}
@@ -21,7 +23,7 @@ directive('data', skipDuringClone((el, { expression }, { cleanup }) => {
 
     let data = evaluate(el, expression, { scope: dataProviderContext })
 
-    if (data === undefined) data = {}
+    if (data === undefined || data === true) data = {}
 
     let cleanup2 = injectMagics(data, el).cleanup
 
@@ -34,14 +36,12 @@ directive('data', skipDuringClone((el, { expression }, { cleanup }) => {
     reactiveData['init'] && evaluate(el, reactiveData['init'])
 
     cleanup(() => {
-        undo()
-
-        // MemLeak1: Issue #2140
-        cleanup1()
-        cleanup2()
-
         reactiveData['destroy'] && evaluate(el, reactiveData['destroy'])
 
         undo()
+
+         // MemLeak1: Issue #2140
+         cleanup1()
+         cleanup2()
     })
 }))

@@ -10,9 +10,11 @@ export function dontAutoEvaluateFunctions(callback) {
 
     shouldAutoEvaluateFunctions = false
 
-    callback()
+    let result = callback()
 
     shouldAutoEvaluateFunctions = cache
+
+    return result
 }
 
 export function evaluate(el, expression, extras = {}) {
@@ -37,17 +39,15 @@ export function normalEvaluator(el, expression) {
     let overriddenMagics = {}
 
     let cleanup = injectMagics(overriddenMagics, el).cleanup
-    
-    // MemLeak1: Issue #2140 (note: there are other uses of injectMagics)
-    onAttributeRemoved(el, "evaluator", cleanup)
+
+     // MemLeak1: Issue #2140 (note: there are other uses of injectMagics)
+     onAttributeRemoved(el, "evaluator", cleanup)
 
     let dataStack = [overriddenMagics, ...closestDataStack(el)]
 
-    if (typeof expression === 'function') {
-        return generateEvaluatorFromFunction(dataStack, expression)
-    }
-
-    let evaluator = generateEvaluatorFromString(dataStack, expression, el)
+    let evaluator = (typeof expression === 'function')
+        ? generateEvaluatorFromFunction(dataStack, expression)
+        : generateEvaluatorFromString(dataStack, expression, el)
 
     return tryCatch.bind(null, el, expression, evaluator)
 }
@@ -70,19 +70,28 @@ function generateFunctionFromString(expression, el) {
     let AsyncFunction = Object.getPrototypeOf(async function(){}).constructor
 
     // Some expressions that are useful in Alpine are not valid as the right side of an expression.
-    // Here we'll detect if the expression isn't valid for an assignement and wrap it in a self-
+    // Here we'll detect if the expression isn't valid for an assignment and wrap it in a self-
     // calling function so that we don't throw an error AND a "return" statement can b e used.
     let rightSideSafeExpression = 0
         // Support expressions starting with "if" statements like: "if (...) doSomething()"
-        || /^[\n\s]*if.*\(.*\)/.test(expression)
+        || /^[\n\s]*if.*\(.*\)/.test(expression.trim())
         // Support expressions starting with "let/const" like: "let foo = 'bar'"
-        || /^(let|const)\s/.test(expression)
-            ? `(() => { ${expression} })()`
+        || /^(let|const)\s/.test(expression.trim())
+            ? `(async()=>{ ${expression} })()`
             : expression
 
     const safeAsyncFunction = () => {
         try {
-            return new AsyncFunction(['__self', 'scope'], `with (scope) { __self.result = ${rightSideSafeExpression} }; __self.finished = true; return __self.result;`)
+            let func = new AsyncFunction(
+                ["__self", "scope"],
+                `with (scope) { __self.result = ${rightSideSafeExpression} }; __self.finished = true; return __self.result;`
+            )
+            
+            Object.defineProperty(func, "name", {
+                value: `[Alpine] ${expression}`,
+            })
+            
+            return func
         } catch ( error ) {
             handleError( error, el, expression )
             return Promise.resolve()
@@ -138,6 +147,8 @@ export function runIfTypeOfFunction(receiver, value, scope, params, el) {
         } else {
             receiver(result)
         }
+    } else if (typeof value === 'object' && value instanceof Promise) {
+        value.then(i => receiver(i))
     } else {
         receiver(value)
     }

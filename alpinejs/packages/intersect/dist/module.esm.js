@@ -1,10 +1,10 @@
 // packages/intersect/src/index.js
 function src_default(Alpine) {
-  Alpine.directive("intersect", (el, {value, expression, modifiers}, {evaluateLater, cleanup}) => {
+  Alpine.directive("intersect", (el, { value, expression, modifiers }, { evaluateLater, cleanup }) => {
     let evaluate = evaluateLater(expression);
     let options = {
       rootMargin: getRootMargin(modifiers),
-      threshold: getThreshhold(modifiers)
+      threshold: getThreshold(modifiers)
     };
     let observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
@@ -20,7 +20,7 @@ function src_default(Alpine) {
     });
   });
 }
-function getThreshhold(modifiers) {
+function getThreshold(modifiers) {
   if (modifiers.includes("full"))
     return 0.99;
   if (modifiers.includes("half"))

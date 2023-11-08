@@ -102,12 +102,17 @@ export default function (Alpine) {
 
             let oldValue = false
 
-            let trap = createFocusTrap(el, {
+            let options = {
                 escapeDeactivates: false,
                 allowOutsideClick: true,
                 fallbackFocus: () => el,
-                initialFocus: el.querySelector('[autofocus]')
-            })
+            }
+
+            let autofocusEl = el.querySelector('[autofocus]')
+
+            if (autofocusEl) options.initialFocus = autofocusEl
+
+            let trap = createFocusTrap(el, options)
 
             let undoInert = () => {}
             let undoDisableScrolling = () => {}
@@ -176,9 +181,11 @@ function crawlSiblingsUp(el, callback) {
     if (el.isSameNode(document.body) || ! el.parentNode) return
 
     Array.from(el.parentNode.children).forEach(sibling => {
-        if (! sibling.isSameNode(el)) callback(sibling)
-
-        crawlSiblingsUp(el.parentNode, callback)
+        if (sibling.isSameNode(el)) {
+            crawlSiblingsUp(el.parentNode, callback)
+        } else {
+            callback(sibling)
+        }
     })
 }
 

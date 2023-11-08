@@ -1,28 +1,33 @@
 // packages/mask/src/index.js
 function src_default(Alpine) {
-  Alpine.directive("mask", (el, {value, expression}, {effect, evaluateLater}) => {
+  Alpine.directive("mask", (el, { value, expression }, { effect, evaluateLater }) => {
     let templateFn = () => expression;
     let lastInputValue = "";
-    if (["function", "dynamic"].includes(value)) {
-      let evaluator = evaluateLater(expression);
-      effect(() => {
-        templateFn = (input) => {
-          let result;
-          Alpine.dontAutoEvaluateFunctions(() => {
-            evaluator((value2) => {
-              result = typeof value2 === "function" ? value2(input) : value2;
-            }, {scope: {
-              $input: input,
-              $money: formatMoney.bind({el})
-            }});
-          });
-          return result;
-        };
-        processInputValue(el);
-      });
-    } else {
-      processInputValue(el);
-    }
+    queueMicrotask(() => {
+      if (["function", "dynamic"].includes(value)) {
+        let evaluator = evaluateLater(expression);
+        effect(() => {
+          templateFn = (input) => {
+            let result;
+            Alpine.dontAutoEvaluateFunctions(() => {
+              evaluator((value2) => {
+                result = typeof value2 === "function" ? value2(input) : value2;
+              }, { scope: {
+                // These are "magics" we'll make available to the x-mask:function:
+                "$input": input,
+                "$money": formatMoney.bind({ el })
+              } });
+            });
+            return result;
+          };
+          processInputValue(el, false);
+        });
+      } else {
+        processInputValue(el, false);
+      }
+      if (el._x_model)
+        el._x_model.set(el.value);
+    });
     el.addEventListener("input", () => processInputValue(el));
     el.addEventListener("blur", () => processInputValue(el, false));
     function processInputValue(el2, shouldRestoreCursor = true) {
@@ -51,14 +56,20 @@ function src_default(Alpine) {
       let rebuiltInput = buildUp(template, strippedDownInput);
       return rebuiltInput;
     }
-  });
+  }).before("model");
 }
 function restoreCursorPosition(el, template, callback) {
   let cursorPosition = el.selectionStart;
   let unformattedValue = el.value;
   callback();
   let beforeLeftOfCursorBeforeFormatting = unformattedValue.slice(0, cursorPosition);
-  let newPosition = buildUp(template, stripDown(template, beforeLeftOfCursorBeforeFormatting)).length;
+  let newPosition = buildUp(
+    template,
+    stripDown(
+      template,
+      beforeLeftOfCursorBeforeFormatting
+    )
+  ).length;
   el.setSelectionRange(newPosition, newPosition);
 }
 function stripDown(template, input) {
@@ -66,7 +77,7 @@ function stripDown(template, input) {
   let output = "";
   let regexes = {
     "9": /[0-9]/,
-    a: /[a-zA-Z]/,
+    "a": /[a-zA-Z]/,
     "*": /[a-zA-Z0-9]/
   };
   let wildcardTemplate = "";
@@ -111,8 +122,14 @@ function buildUp(template, input) {
   }
   return output;
 }
-function formatMoney(input, delimeter = ".", thousands) {
-  thousands = delimeter === "," && thousands === void 0 ? "." : ",";
+function formatMoney(input, delimiter = ".", thousands, precision = 2) {
+  if (input === "-")
+    return "-";
+  if (/^\D+$/.test(input))
+    return "9";
+  if (thousands === null || thousands === void 0) {
+    thousands = delimiter === "," ? "." : ",";
+  }
   let addThousands = (input2, thousands2) => {
     let output = "";
     let counter = 0;
@@ -129,15 +146,16 @@ function formatMoney(input, delimeter = ".", thousands) {
     }
     return output;
   };
-  let strippedInput = input.replaceAll(new RegExp(`[^0-9\\${delimeter}]`, "g"), "");
-  let template = Array.from({length: strippedInput.split(delimeter)[0].length}).fill("9").join("");
-  template = addThousands(template, thousands);
-  if (input.includes(delimeter))
-    template += `${delimeter}99`;
+  let minus = input.startsWith("-") ? "-" : "";
+  let strippedInput = input.replaceAll(new RegExp(`[^0-9\\${delimiter}]`, "g"), "");
+  let template = Array.from({ length: strippedInput.split(delimiter)[0].length }).fill("9").join("");
+  template = `${minus}${addThousands(template, thousands)}`;
+  if (precision > 0 && input.includes(delimiter))
+    template += `${delimiter}` + "9".repeat(precision);
   queueMicrotask(() => {
-    if (this.el.value.endsWith(delimeter))
+    if (this.el.value.endsWith(delimiter))
       return;
-    if (this.el.value[this.el.selectionStart - 1] === delimeter) {
+    if (this.el.value[this.el.selectionStart - 1] === delimiter) {
       this.el.setSelectionRange(this.el.selectionStart - 1, this.el.selectionStart - 1);
     }
   });

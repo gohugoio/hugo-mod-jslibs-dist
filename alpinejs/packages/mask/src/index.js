@@ -4,39 +4,44 @@ export default function (Alpine) {
         let templateFn = () => expression
         let lastInputValue = ''
 
-        if (['function', 'dynamic'].includes(value)) {
-            // This is an x-mask:function directive.
+        queueMicrotask(() => {
+            if (['function', 'dynamic'].includes(value)) {
+                // This is an x-mask:function directive.
 
-            let evaluator = evaluateLater(expression)
+                let evaluator = evaluateLater(expression)
 
-            effect(() => {
-                templateFn = input => {
-                    let result
+                effect(() => {
+                    templateFn = input => {
+                        let result
 
-                    // We need to prevent "auto-evaluation" of functions like
-                    // x-on expressions do so that we can use them as mask functions.
-                    Alpine.dontAutoEvaluateFunctions(() => {
-                        evaluator(value => {
-                            result = typeof value === 'function' ? value(input) : value
-                        }, { scope: {
-                            // These are "magics" we'll make available to the x-mask:function:
-                            '$input': input,
-                            '$money': formatMoney.bind({ el }),
-                        }})
-                    })
+                        // We need to prevent "auto-evaluation" of functions like
+                        // x-on expressions do so that we can use them as mask functions.
+                        Alpine.dontAutoEvaluateFunctions(() => {
+                            evaluator(value => {
+                                result = typeof value === 'function' ? value(input) : value
+                            }, { scope: {
+                                // These are "magics" we'll make available to the x-mask:function:
+                                '$input': input,
+                                '$money': formatMoney.bind({ el }),
+                            }})
+                        })
 
-                    return result
-                }
+                        return result
+                    }
 
-                // Run on initialize which serves a dual purpose:
-                // - Initializing the mask on the input if it has an initial value.
-                // - Running the template function to set up reactivity, so that
-                //   when a dependancy inside it changes, the input re-masks.
-                processInputValue(el)
-            })
-        } else {
-            processInputValue(el)
-        }
+                    // Run on initialize which serves a dual purpose:
+                    // - Initializing the mask on the input if it has an initial value.
+                    // - Running the template function to set up reactivity, so that
+                    //   when a dependency inside it changes, the input re-masks.
+                    processInputValue(el, false)
+                })
+            } else {
+                processInputValue(el, false)
+            }
+
+            // Override x-model's initial value...
+            if (el._x_model) el._x_model.set(el.value)
+        })
 
         el.addEventListener('input', () => processInputValue(el))
         // Don't "restoreCursorPosition" on "blur", because Safari
@@ -56,7 +61,9 @@ export default function (Alpine) {
                 return lastInputValue = el.value
             }
 
-            let setInput = () => { lastInputValue = el.value = formatInput(input, template) }
+            let setInput = () => {
+                lastInputValue = el.value = formatInput(input, template)
+            }
 
             if (shouldRestoreCursor) {
                 // When an input element's value is set, it moves the cursor to the end
@@ -79,7 +86,7 @@ export default function (Alpine) {
 
             return rebuiltInput
         }
-    })
+    }).before('model')
 }
 
 export function restoreCursorPosition(el, template, callback) {
@@ -163,9 +170,13 @@ export function buildUp(template, input) {
     return output
 }
 
-function formatMoney(input, delimeter = '.', thousands) {
-    thousands = (delimeter === ',' && thousands === undefined)
-        ? '.' : ','
+export function formatMoney(input, delimiter = '.', thousands, precision = 2) {
+    if (input === '-') return '-'
+    if (/^\D+$/.test(input)) return '9'
+
+    if (thousands === null || thousands === undefined) {
+        thousands = delimiter === "," ? "." : ","
+    }
 
     let addThousands = (input, thousands) => {
         let output = ''
@@ -186,17 +197,19 @@ function formatMoney(input, delimeter = '.', thousands) {
         return output
     }
 
-    let strippedInput = input.replaceAll(new RegExp(`[^0-9\\${delimeter}]`, 'g'), '')
-    let template = Array.from({ length: strippedInput.split(delimeter)[0].length }).fill('9').join('')
+    let minus = input.startsWith('-') ? '-' : ''
+    let strippedInput = input.replaceAll(new RegExp(`[^0-9\\${delimiter}]`, 'g'), '')
+    let template = Array.from({ length: strippedInput.split(delimiter)[0].length }).fill('9').join('')
 
-    template = addThousands(template, thousands)
+    template = `${minus}${addThousands(template, thousands)}`
 
-    if (input.includes(delimeter)) template += `${delimeter}99`
+    if (precision > 0 && input.includes(delimiter)) 
+        template += `${delimiter}` + '9'.repeat(precision)
 
     queueMicrotask(() => {
-        if (this.el.value.endsWith(delimeter)) return
+        if (this.el.value.endsWith(delimiter)) return
 
-        if (this.el.value[this.el.selectionStart - 1] === delimeter) {
+        if (this.el.value[this.el.selectionStart - 1] === delimiter) {
             this.el.setSelectionRange(this.el.selectionStart - 1, this.el.selectionStart - 1)
         }
     })
