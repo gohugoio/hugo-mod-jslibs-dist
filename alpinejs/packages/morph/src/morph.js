@@ -1,34 +1,18 @@
-import { dom, createElement, textOrComment} from './dom.js'
 
 let resolveStep = () => {}
 
 let logger = () => {}
 
-export async function morph(from, toHtml, options) {
+export function morph(from, toHtml, options) {
+    monkeyPatchDomSetAttributeToAllowAtSymbols()
+
     // We're defining these globals and methods inside this function (instead of outside)
     // because it's an async function and if run twice, they would overwrite
     // each other.
 
     let fromEl
     let toEl
-    let key
-        ,lookahead
-        ,updating
-        ,updated
-        ,removing
-        ,removed
-        ,adding
-        ,added
-        ,debug
-
-
-    function breakpoint(message) {
-        if (! debug) return
-
-        logger((message || '').replace('\n', '\\n'), fromEl, toEl)
-
-        return new Promise(resolve => resolveStep = () => resolve())
-    }
+    let key, lookahead, updating, updated, removing, removed, adding, added
 
     function assignOptions(options = {}) {
         let defaultGetKey = el => el.getAttribute('key')
@@ -42,44 +26,37 @@ export async function morph(from, toHtml, options) {
         added = options.added || noop
         key = options.key || defaultGetKey
         lookahead = options.lookahead || false
-        debug = options.debug || false
     }
 
-    async function patch(from, to) {
-        // This is a time saver, however, it won't catch differences in nested <template> tags.
-        // I'm leaving this here as I believe it's an important speed improvement, I just
-        // don't see a way to enable it currently:
-        //
-        // if (from.isEqualNode(to)) return
-
+    function patch(from, to) {
         if (differentElementNamesTypesOrKeys(from, to)) {
-            let result = patchElement(from, to)
-
-            await breakpoint('Swap elements')
-
-            return result
+            return swapElements(from, to)
         }
 
         let updateChildrenOnly = false
 
         if (shouldSkip(updating, from, to, () => updateChildrenOnly = true)) return
 
-        window.Alpine && initializeAlpineOnTo(from, to, () => updateChildrenOnly = true)
+        // Initialize the server-side HTML element with Alpine...
+        if (from.nodeType === 1 && window.Alpine) {
+            window.Alpine.cloneNode(from, to)
+        }
 
         if (textOrComment(to)) {
-            await patchNodeValue(from, to)
+            patchNodeValue(from, to)
+
             updated(from, to)
 
             return
         }
 
         if (! updateChildrenOnly) {
-            await patchAttributes(from, to)
+            patchAttributes(from, to)
         }
 
         updated(from, to)
 
-        await patchChildren(from, to)
+        patchChildren(from, to)
     }
 
     function differentElementNamesTypesOrKeys(from, to) {
@@ -88,30 +65,31 @@ export async function morph(from, toHtml, options) {
             || getKey(from) != getKey(to)
     }
 
-    function patchElement(from, to) {
+    function swapElements(from, to) {
         if (shouldSkip(removing, from)) return
 
         let toCloned = to.cloneNode(true)
 
         if (shouldSkip(adding, toCloned)) return
 
-        dom(from).replace(toCloned)
+        from.replaceWith(toCloned)
 
         removed(from)
         added(toCloned)
     }
 
-    async function patchNodeValue(from, to) {
+    function patchNodeValue(from, to) {
         let value = to.nodeValue
 
         if (from.nodeValue !== value) {
+            // Change text node...
             from.nodeValue = value
-
-            await breakpoint('Change text node to: ' + value)
         }
     }
 
-    async function patchAttributes(from, to) {
+    function patchAttributes(from, to) {
+        if (from._x_transitioning) return
+
         if (from._x_isShown && ! to._x_isShown) {
             return
         }
@@ -126,9 +104,8 @@ export async function morph(from, toHtml, options) {
             let name = domAttributes[i].name;
 
             if (! to.hasAttribute(name)) {
+                // Remove attribute...
                 from.removeAttribute(name)
-
-                await breakpoint('Remove attribute')
             }
         }
 
@@ -138,105 +115,157 @@ export async function morph(from, toHtml, options) {
 
             if (from.getAttribute(name) !== value) {
                 from.setAttribute(name, value)
-
-                await breakpoint(`Set [${name}] attribute to: "${value}"`)
             }
         }
     }
 
-    async function patchChildren(from, to) {
-        let domChildren = from.childNodes
-        let toChildren = to.childNodes
+    function patchChildren(from, to) {
+        let fromKeys = keyToMap(from.children)
+        let fromKeyHoldovers = {}
 
-        let toKeyToNodeMap = keyToMap(toChildren)
-        let domKeyDomNodeMap = keyToMap(domChildren)
-
-        let currentTo = dom(to).nodes().first()
-        let currentFrom = dom(from).nodes().first()
-
-        let domKeyHoldovers = {}
+        let currentTo = getFirstNode(to)
+        let currentFrom = getFirstNode(from)
 
         while (currentTo) {
             let toKey = getKey(currentTo)
-            let domKey = getKey(currentFrom)
+            let fromKey = getKey(currentFrom)
 
-            // Add new elements
+            // Add new elements...
             if (! currentFrom) {
-                if (toKey && domKeyHoldovers[toKey]) {
-                    let holdover = domKeyHoldovers[toKey]
+                if (toKey && fromKeyHoldovers[toKey]) {
+                    // Add element (from key)...
+                    let holdover = fromKeyHoldovers[toKey]
 
-                    dom(from).append(holdover)
+                    from.appendChild(holdover)
+
                     currentFrom = holdover
-
-                    await breakpoint('Add element (from key)')
                 } else {
-                    let added = addNodeTo(currentTo, from) || {}
+                    if(! shouldSkip(adding, currentTo)) {
+                        // Add element...
+                        let clone = currentTo.cloneNode(true)
 
-                    await breakpoint('Add element: ' + (added.outerHTML || added.nodeValue))
+                        from.appendChild(clone)
 
-                    currentTo = dom(currentTo).nodes().next()
+                        added(clone)
+                    }
+
+                    currentTo = getNextSibling(to, currentTo)
 
                     continue
                 }
             }
 
-            if (lookahead) {
-                let nextToElementSibling = dom(currentTo).next()
+            // Handle conditional markers (presumably added by backends like Livewire)...
+            let isIf = node => node && node.nodeType === 8 && node.textContent === '[if BLOCK]><![endif]'
+            let isEnd = node => node && node.nodeType === 8 && node.textContent === '[if ENDBLOCK]><![endif]'
+
+            if (isIf(currentTo) && isIf(currentFrom)) {
+                let nestedIfCount = 0
+
+                let fromBlockStart = currentFrom
+
+                while (currentFrom) {
+                    let next = getNextSibling(from, currentFrom)
+
+                    if (isIf(next)) {
+                        nestedIfCount++
+                    } else if (isEnd(next) && nestedIfCount > 0) {
+                        nestedIfCount--
+                    } else if (isEnd(next) && nestedIfCount === 0) {
+                        currentFrom = next
+
+                        break;
+                    }
+
+                    currentFrom = next
+                }
+
+                let fromBlockEnd = currentFrom
+
+                nestedIfCount = 0
+
+                let toBlockStart = currentTo
+
+                while (currentTo) {
+                    let next = getNextSibling(to, currentTo)
+
+                    if (isIf(next)) {
+                        nestedIfCount++
+                    } else if (isEnd(next) && nestedIfCount > 0) {
+                        nestedIfCount--
+                    } else if (isEnd(next) && nestedIfCount === 0) {
+                        currentTo = next
+
+                        break;
+                    }
+
+                    currentTo = next
+                }
+
+                let toBlockEnd = currentTo
+
+                let fromBlock = new Block(fromBlockStart, fromBlockEnd)
+                let toBlock = new Block(toBlockStart, toBlockEnd)
+
+                patchChildren(fromBlock, toBlock)
+
+                continue
+            }
+
+            // Lookaheads should only apply to non-text-or-comment elements...
+            if (currentFrom.nodeType === 1 && lookahead && ! currentFrom.isEqualNode(currentTo)) {
+                let nextToElementSibling = getNextSibling(to, currentTo)
 
                 let found = false
 
-                while (!found && nextToElementSibling) {
-                    if (currentFrom.isEqualNode(nextToElementSibling)) {
-                        found = true
+                while (! found && nextToElementSibling) {
+                    if (nextToElementSibling.nodeType === 1 && currentFrom.isEqualNode(nextToElementSibling)) {
+                        found = true; // This ";" needs to be here...
 
-                        currentFrom = addNodeBefore(currentTo, currentFrom)
+                        currentFrom = addNodeBefore(from, currentTo, currentFrom)
 
-                        domKey = getKey(currentFrom)
-
-                        await breakpoint('Move element (lookahead)')
+                        fromKey = getKey(currentFrom)
                     }
 
-                    nextToElementSibling = dom(nextToElementSibling).next()
+                    nextToElementSibling = getNextSibling(to, nextToElementSibling)
                 }
             }
 
-            if (toKey !== domKey) {
-                if (! toKey && domKey) {
-                    domKeyHoldovers[domKey] = currentFrom
-                    currentFrom = addNodeBefore(currentTo, currentFrom)
-                    domKeyHoldovers[domKey].remove()
-                    currentFrom = dom(currentFrom).nodes().next()
-                    currentTo = dom(currentTo).nodes().next()
-
-                    await breakpoint('No "to" key')
+            if (toKey !== fromKey) {
+                if (! toKey && fromKey) {
+                    // No "to" key...
+                    fromKeyHoldovers[fromKey] = currentFrom; // This ";" needs to be here...
+                    currentFrom = addNodeBefore(from, currentTo, currentFrom)
+                    fromKeyHoldovers[fromKey].remove()
+                    currentFrom = getNextSibling(from, currentFrom)
+                    currentTo = getNextSibling(to, currentTo)
 
                     continue
                 }
 
-                if (toKey && ! domKey) {
-                    if (domKeyDomNodeMap[toKey]) {
-                        currentFrom = dom(currentFrom).replace(domKeyDomNodeMap[toKey])
-
-                        await breakpoint('No "from" key')
+                if (toKey && ! fromKey) {
+                    if (fromKeys[toKey]) {
+                        // No "from" key...
+                        currentFrom.replaceWith(fromKeys[toKey])
+                        currentFrom = fromKeys[toKey]
                     }
                 }
 
-                if (toKey && domKey) {
-                    domKeyHoldovers[domKey] = currentFrom
-                    let domKeyNode = domKeyDomNodeMap[toKey]
+                if (toKey && fromKey) {
+                    let fromKeyNode = fromKeys[toKey]
 
-                    if (domKeyNode) {
-                        currentFrom = dom(currentFrom).replace(domKeyNode)
-
-                        await breakpoint('Move "from" key')
+                    if (fromKeyNode) {
+                        // Move "from" key...
+                        fromKeyHoldovers[fromKey] = currentFrom
+                        currentFrom.replaceWith(fromKeyNode)
+                        currentFrom = fromKeyNode
                     } else {
-                        domKeyHoldovers[domKey] = currentFrom
-                        currentFrom = addNodeBefore(currentTo, currentFrom)
-                        domKeyHoldovers[domKey].remove()
-                        currentFrom = dom(currentFrom).next()
-                        currentTo = dom(currentTo).next()
-
-                        await breakpoint('Swap elements with keys')
+                        // Swap elements with keys...
+                        fromKeyHoldovers[fromKey] = currentFrom; // This ";" needs to be here...
+                        currentFrom = addNodeBefore(from, currentTo, currentFrom)
+                        fromKeyHoldovers[fromKey].remove()
+                        currentFrom = getNextSibling(from, currentFrom)
+                        currentTo = getNextSibling(to, currentTo)
 
                         continue
                     }
@@ -244,24 +273,26 @@ export async function morph(from, toHtml, options) {
             }
 
             // Get next from sibling before patching in case the node is replaced
-            let currentFromNext = currentFrom && dom(currentFrom).nodes().next()
+            let currentFromNext = currentFrom && getNextSibling(from, currentFrom) //dom.next(from, fromChildren, currentFrom))
 
             // Patch elements
-            await patch(currentFrom, currentTo)
+            patch(currentFrom, currentTo)
 
-            currentTo = currentTo && dom(currentTo).nodes().next()
+            currentTo = currentTo && getNextSibling(to, currentTo) // dom.next(from, toChildren, currentTo))
+
             currentFrom = currentFromNext
         }
 
-        // Cleanup extra froms.
+        // Cleanup extra forms.
         let removals = []
 
         // We need to collect the "removals" first before actually
         // removing them so we don't mess with the order of things.
         while (currentFrom) {
-            if(! shouldSkip(removing, currentFrom)) removals.push(currentFrom)
+            if (! shouldSkip(removing, currentFrom)) removals.push(currentFrom)
 
-            currentFrom = dom(currentFrom).nodes().next()
+            // currentFrom = dom.next(fromChildren, currentFrom)
+            currentFrom = getNextSibling(from, currentFrom)
         }
 
         // Now we can do the actual removals.
@@ -269,8 +300,6 @@ export async function morph(from, toHtml, options) {
             let domForRemoval = removals.shift()
 
             domForRemoval.remove()
-
-            await breakpoint('remove el')
 
             removed(domForRemoval)
         }
@@ -283,43 +312,29 @@ export async function morph(from, toHtml, options) {
     function keyToMap(els) {
         let map = {}
 
-        els.forEach(el => {
+        for (let el of els) {
             let theKey = getKey(el)
 
             if (theKey) {
                 map[theKey] = el
             }
-        })
+        }
 
         return map
     }
 
-    function addNodeTo(node, parent) {
+    function addNodeBefore(parent, node, beforeMe) {
         if(! shouldSkip(adding, node)) {
             let clone = node.cloneNode(true)
 
-            dom(parent).append(clone)
+            parent.insertBefore(clone, beforeMe)
 
             added(clone)
 
             return clone
         }
 
-        return null;
-    }
-
-    function addNodeBefore(node, beforeMe) {
-        if(! shouldSkip(adding, node)) {
-            let clone = node.cloneNode(true)
-
-            dom(beforeMe).before(clone)
-
-            added(clone)
-
-            return clone
-        }
-
-        return beforeMe
+        return node
     }
 
     // Finally we morph the element
@@ -327,19 +342,19 @@ export async function morph(from, toHtml, options) {
     assignOptions(options)
 
     fromEl = from
-    toEl = createElement(toHtml)
+    toEl = typeof toHtml === 'string' ? createElement(toHtml) : toHtml
 
-    // If there is no x-data on the element we're morphing,
-    // let's seed it with the outer Alpine scope on the page.
     if (window.Alpine && window.Alpine.closestDataStack && ! from._x_dataStack) {
+        // Just in case a part of this template uses Alpine scope from somewhere
+        // higher in the DOM tree, we'll find that state and replace it on the root
+        // element so everything is synced up accurately.
         toEl._x_dataStack = window.Alpine.closestDataStack(from)
 
-        toEl._x_dataStack && window.Alpine.clone(from, toEl)
+        // We will kick off a clone on the root element.
+        toEl._x_dataStack && window.Alpine.cloneNode(from, toEl)
     }
 
-    await breakpoint()
-
-    await patch(from, toEl)
+    patch(from, toEl)
 
     // Release these for the garbage collector.
     fromEl = undefined
@@ -348,10 +363,9 @@ export async function morph(from, toHtml, options) {
     return from
 }
 
-morph.step = () => resolveStep()
-morph.log = (theLogger) => {
-    logger = theLogger
-}
+// These are legacy holdovers that don't do anything anymore...
+morph.step = () => {}
+morph.log = () => {}
 
 function shouldSkip(hook, ...args) {
     let skip = false
@@ -361,13 +375,113 @@ function shouldSkip(hook, ...args) {
     return skip
 }
 
-function initializeAlpineOnTo(from, to, childrenOnly) {
-    if (from.nodeType !== 1) return
+let patched = false
 
-    // If the element we are updating is an Alpine component...
-    if (from._x_dataStack) {
-        // Then temporarily clone it (with it's data) to the "to" element.
-        // This should simulate backend Livewire being aware of Alpine changes.
-        window.Alpine.clone(from, to)
+export function createElement(html) {
+    const template = document.createElement('template')
+    template.innerHTML = html
+    return template.content.firstElementChild
+}
+
+export function textOrComment(el) {
+    return el.nodeType === 3
+        || el.nodeType === 8
+}
+
+// "Block"s are used when morphing with conditional markers.
+// They allow us to patch isolated portions of a list of
+// siblings in a DOM tree...
+class Block {
+    constructor(start, end) {
+        // We're assuming here that the start and end caps are comment blocks...
+        this.startComment = start
+        this.endComment = end
+    }
+
+    get children() {
+        let children = [];
+
+        let currentNode = this.startComment.nextSibling
+
+        while (currentNode && currentNode !== this.endComment) {
+            children.push(currentNode)
+
+            currentNode = currentNode.nextSibling
+        }
+
+        return children
+    }
+
+    appendChild(child) {
+        this.endComment.before(child)
+    }
+
+    get firstChild() {
+        let first = this.startComment.nextSibling
+
+        if (first === this.endComment) return
+
+        return first
+    }
+
+    nextNode(reference) {
+        let next = reference.nextSibling
+
+        if (next === this.endComment) return
+
+        return next
+    }
+
+    insertBefore(newNode, reference) {
+        reference.before(newNode)
+
+        return newNode
+    }
+}
+
+function getFirstNode(parent) {
+    return parent.firstChild
+}
+
+function getNextSibling(parent, reference) {
+    if (reference._x_teleport) {
+        return reference._x_teleport
+    }
+
+    let next
+
+    if (parent instanceof Block) {
+        next =  parent.nextNode(reference)
+    } else {
+        next = reference.nextSibling
+    }
+
+    return next
+}
+
+function monkeyPatchDomSetAttributeToAllowAtSymbols() {
+    if (patched) return
+
+    patched = true
+
+    // Because morphdom may add attributes to elements containing "@" symbols
+    // like in the case of an Alpine `@click` directive, we have to patch
+    // the standard Element.setAttribute method to allow this to work.
+    let original = Element.prototype.setAttribute
+
+    let hostDiv = document.createElement('div')
+
+    Element.prototype.setAttribute = function newSetAttribute(name, value) {
+        if (! name.includes('@')) {
+            return original.call(this, name, value)
+        }
+
+        hostDiv.innerHTML = `<span ${name}="${value}"></span>`
+
+        let attr = hostDiv.firstElementChild.getAttributeNode(name)
+
+        hostDiv.firstElementChild.removeAttributeNode(attr)
+
+        this.setAttributeNode(attr)
     }
 }

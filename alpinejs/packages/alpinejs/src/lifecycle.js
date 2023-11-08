@@ -1,11 +1,17 @@
-import { startObservingMutations, onAttributesAdded, onElAdded, onElRemoved, cleanupAttributes } from "./mutation"
+import { startObservingMutations, onAttributesAdded, onElAdded, onElRemoved, cleanupAttributes, cleanupElement } from "./mutation"
 import { deferHandlingDirectives, directives } from "./directives"
 import { dispatch } from './utils/dispatch'
-import { nextTick } from "./nextTick"
 import { walk } from "./utils/walk"
 import { warn } from './utils/warn'
+import Alpine from "./alpine"
+
+let started = false
 
 export function start() {
+    if (started) warn('Alpine has already been initialized on this page. Calling Alpine.start() more than once can cause problems.')
+
+    started = true
+
     if (! document.body) warn('Unable to initialize. Trying to load Alpine before `<body>` is available. Did you forget to add `defer` in Alpine\'s `<script>` tag?')
 
     dispatch(document, 'alpine:init')
@@ -69,9 +75,17 @@ export function isRoot(el) {
     return rootSelectors().some(selector => el.matches(selector))
 }
 
-export function initTree(el, walker = walk) {
+let initInterceptors = []
+
+export function interceptInit(callback) { initInterceptors.push(callback) }
+
+export function initTree(el, walker = walk, intercept = () => {}) {
     deferHandlingDirectives(() => {
         walker(el, (el, skip) => {
+            intercept(el, skip)
+
+            initInterceptors.forEach(i => i(el, skip))
+
             directives(el, el.attributes).forEach(handle => handle())
 
             el._x_ignore && skip()
@@ -80,5 +94,8 @@ export function initTree(el, walker = walk) {
 }
 
 export function destroyTree(root) {
-    walk(root, el => cleanupAttributes(el))
+    walk(root, el => {
+        cleanupAttributes(el)
+        cleanupElement(el)
+    })
 }

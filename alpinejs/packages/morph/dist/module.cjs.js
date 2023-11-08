@@ -1,103 +1,35 @@
 var __defProp = Object.defineProperty;
-var __markAsModule = (target) => __defProp(target, "__esModule", {value: true});
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __export = (target, all) => {
   for (var name in all)
-    __defProp(target, name, {get: all[name], enumerable: true});
+    __defProp(target, name, { get: all[name], enumerable: true });
 };
-var __publicField = (obj, key, value) => {
-  if (typeof key !== "symbol")
-    key += "";
-  if (key in obj)
-    return __defProp(obj, key, {enumerable: true, configurable: true, writable: true, value});
-  return obj[key] = value;
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
 };
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // packages/morph/builds/module.js
-__markAsModule(exports);
-__export(exports, {
+var module_exports = {};
+__export(module_exports, {
   default: () => module_default,
   morph: () => morph
 });
-
-// packages/morph/src/dom.js
-var DomManager = class {
-  constructor(el) {
-    __publicField(this, "el");
-    __publicField(this, "traversals", {
-      first: "firstElementChild",
-      next: "nextElementSibling",
-      parent: "parentElement"
-    });
-    this.el = el;
-  }
-  nodes() {
-    this.traversals = {
-      first: "firstChild",
-      next: "nextSibling",
-      parent: "parentNode"
-    };
-    return this;
-  }
-  first() {
-    return this.teleportTo(this.el[this.traversals["first"]]);
-  }
-  next() {
-    return this.teleportTo(this.teleportBack(this.el[this.traversals["next"]]));
-  }
-  before(insertee) {
-    this.el[this.traversals["parent"]].insertBefore(insertee, this.el);
-    return insertee;
-  }
-  replace(replacement) {
-    this.el[this.traversals["parent"]].replaceChild(replacement, this.el);
-    return replacement;
-  }
-  append(appendee) {
-    this.el.appendChild(appendee);
-    return appendee;
-  }
-  teleportTo(el) {
-    if (!el)
-      return el;
-    if (el._x_teleport)
-      return el._x_teleport;
-    return el;
-  }
-  teleportBack(el) {
-    if (!el)
-      return el;
-    if (el._x_teleportBack)
-      return el._x_teleportBack;
-    return el;
-  }
-};
-function dom(el) {
-  return new DomManager(el);
-}
-function createElement(html) {
-  const template = document.createElement("template");
-  template.innerHTML = html;
-  return template.content.firstElementChild;
-}
-function textOrComment(el) {
-  return el.nodeType === 3 || el.nodeType === 8;
-}
+module.exports = __toCommonJS(module_exports);
 
 // packages/morph/src/morph.js
-var resolveStep = () => {
-};
-var logger = () => {
-};
-async function morph(from, toHtml, options) {
+function morph(from, toHtml, options) {
+  monkeyPatchDomSetAttributeToAllowAtSymbols();
   let fromEl;
   let toEl;
-  let key, lookahead, updating, updated, removing, removed, adding, added, debug;
-  function breakpoint(message) {
-    if (!debug)
-      return;
-    logger((message || "").replace("\n", "\\n"), fromEl, toEl);
-    return new Promise((resolve) => resolveStep = () => resolve());
-  }
+  let key, lookahead, updating, updated, removing, removed, adding, added;
   function assignOptions(options2 = {}) {
     let defaultGetKey = (el) => el.getAttribute("key");
     let noop = () => {
@@ -110,50 +42,50 @@ async function morph(from, toHtml, options) {
     added = options2.added || noop;
     key = options2.key || defaultGetKey;
     lookahead = options2.lookahead || false;
-    debug = options2.debug || false;
   }
-  async function patch(from2, to) {
+  function patch(from2, to) {
     if (differentElementNamesTypesOrKeys(from2, to)) {
-      let result = patchElement(from2, to);
-      await breakpoint("Swap elements");
-      return result;
+      return swapElements(from2, to);
     }
     let updateChildrenOnly = false;
     if (shouldSkip(updating, from2, to, () => updateChildrenOnly = true))
       return;
-    window.Alpine && initializeAlpineOnTo(from2, to, () => updateChildrenOnly = true);
+    if (from2.nodeType === 1 && window.Alpine) {
+      window.Alpine.cloneNode(from2, to);
+    }
     if (textOrComment(to)) {
-      await patchNodeValue(from2, to);
+      patchNodeValue(from2, to);
       updated(from2, to);
       return;
     }
     if (!updateChildrenOnly) {
-      await patchAttributes(from2, to);
+      patchAttributes(from2, to);
     }
     updated(from2, to);
-    await patchChildren(from2, to);
+    patchChildren(from2, to);
   }
   function differentElementNamesTypesOrKeys(from2, to) {
     return from2.nodeType != to.nodeType || from2.nodeName != to.nodeName || getKey(from2) != getKey(to);
   }
-  function patchElement(from2, to) {
+  function swapElements(from2, to) {
     if (shouldSkip(removing, from2))
       return;
     let toCloned = to.cloneNode(true);
     if (shouldSkip(adding, toCloned))
       return;
-    dom(from2).replace(toCloned);
+    from2.replaceWith(toCloned);
     removed(from2);
     added(toCloned);
   }
-  async function patchNodeValue(from2, to) {
+  function patchNodeValue(from2, to) {
     let value = to.nodeValue;
     if (from2.nodeValue !== value) {
       from2.nodeValue = value;
-      await breakpoint("Change text node to: " + value);
     }
   }
-  async function patchAttributes(from2, to) {
+  function patchAttributes(from2, to) {
+    if (from2._x_transitioning)
+      return;
     if (from2._x_isShown && !to._x_isShown) {
       return;
     }
@@ -166,7 +98,6 @@ async function morph(from, toHtml, options) {
       let name = domAttributes[i].name;
       if (!to.hasAttribute(name)) {
         from2.removeAttribute(name);
-        await breakpoint("Remove attribute");
       }
     }
     for (let i = toAttributes.length - 1; i >= 0; i--) {
@@ -174,95 +105,127 @@ async function morph(from, toHtml, options) {
       let value = toAttributes[i].value;
       if (from2.getAttribute(name) !== value) {
         from2.setAttribute(name, value);
-        await breakpoint(`Set [${name}] attribute to: "${value}"`);
       }
     }
   }
-  async function patchChildren(from2, to) {
-    let domChildren = from2.childNodes;
-    let toChildren = to.childNodes;
-    let toKeyToNodeMap = keyToMap(toChildren);
-    let domKeyDomNodeMap = keyToMap(domChildren);
-    let currentTo = dom(to).nodes().first();
-    let currentFrom = dom(from2).nodes().first();
-    let domKeyHoldovers = {};
+  function patchChildren(from2, to) {
+    let fromKeys = keyToMap(from2.children);
+    let fromKeyHoldovers = {};
+    let currentTo = getFirstNode(to);
+    let currentFrom = getFirstNode(from2);
     while (currentTo) {
       let toKey = getKey(currentTo);
-      let domKey = getKey(currentFrom);
+      let fromKey = getKey(currentFrom);
       if (!currentFrom) {
-        if (toKey && domKeyHoldovers[toKey]) {
-          let holdover = domKeyHoldovers[toKey];
-          dom(from2).append(holdover);
+        if (toKey && fromKeyHoldovers[toKey]) {
+          let holdover = fromKeyHoldovers[toKey];
+          from2.appendChild(holdover);
           currentFrom = holdover;
-          await breakpoint("Add element (from key)");
         } else {
-          let added2 = addNodeTo(currentTo, from2) || {};
-          await breakpoint("Add element: " + (added2.outerHTML || added2.nodeValue));
-          currentTo = dom(currentTo).nodes().next();
+          if (!shouldSkip(adding, currentTo)) {
+            let clone = currentTo.cloneNode(true);
+            from2.appendChild(clone);
+            added(clone);
+          }
+          currentTo = getNextSibling(to, currentTo);
           continue;
         }
       }
-      if (lookahead) {
-        let nextToElementSibling = dom(currentTo).next();
+      let isIf = (node) => node && node.nodeType === 8 && node.textContent === "[if BLOCK]><![endif]";
+      let isEnd = (node) => node && node.nodeType === 8 && node.textContent === "[if ENDBLOCK]><![endif]";
+      if (isIf(currentTo) && isIf(currentFrom)) {
+        let nestedIfCount = 0;
+        let fromBlockStart = currentFrom;
+        while (currentFrom) {
+          let next = getNextSibling(from2, currentFrom);
+          if (isIf(next)) {
+            nestedIfCount++;
+          } else if (isEnd(next) && nestedIfCount > 0) {
+            nestedIfCount--;
+          } else if (isEnd(next) && nestedIfCount === 0) {
+            currentFrom = next;
+            break;
+          }
+          currentFrom = next;
+        }
+        let fromBlockEnd = currentFrom;
+        nestedIfCount = 0;
+        let toBlockStart = currentTo;
+        while (currentTo) {
+          let next = getNextSibling(to, currentTo);
+          if (isIf(next)) {
+            nestedIfCount++;
+          } else if (isEnd(next) && nestedIfCount > 0) {
+            nestedIfCount--;
+          } else if (isEnd(next) && nestedIfCount === 0) {
+            currentTo = next;
+            break;
+          }
+          currentTo = next;
+        }
+        let toBlockEnd = currentTo;
+        let fromBlock = new Block(fromBlockStart, fromBlockEnd);
+        let toBlock = new Block(toBlockStart, toBlockEnd);
+        patchChildren(fromBlock, toBlock);
+        continue;
+      }
+      if (currentFrom.nodeType === 1 && lookahead && !currentFrom.isEqualNode(currentTo)) {
+        let nextToElementSibling = getNextSibling(to, currentTo);
         let found = false;
         while (!found && nextToElementSibling) {
-          if (currentFrom.isEqualNode(nextToElementSibling)) {
+          if (nextToElementSibling.nodeType === 1 && currentFrom.isEqualNode(nextToElementSibling)) {
             found = true;
-            currentFrom = addNodeBefore(currentTo, currentFrom);
-            domKey = getKey(currentFrom);
-            await breakpoint("Move element (lookahead)");
+            currentFrom = addNodeBefore(from2, currentTo, currentFrom);
+            fromKey = getKey(currentFrom);
           }
-          nextToElementSibling = dom(nextToElementSibling).next();
+          nextToElementSibling = getNextSibling(to, nextToElementSibling);
         }
       }
-      if (toKey !== domKey) {
-        if (!toKey && domKey) {
-          domKeyHoldovers[domKey] = currentFrom;
-          currentFrom = addNodeBefore(currentTo, currentFrom);
-          domKeyHoldovers[domKey].remove();
-          currentFrom = dom(currentFrom).nodes().next();
-          currentTo = dom(currentTo).nodes().next();
-          await breakpoint('No "to" key');
+      if (toKey !== fromKey) {
+        if (!toKey && fromKey) {
+          fromKeyHoldovers[fromKey] = currentFrom;
+          currentFrom = addNodeBefore(from2, currentTo, currentFrom);
+          fromKeyHoldovers[fromKey].remove();
+          currentFrom = getNextSibling(from2, currentFrom);
+          currentTo = getNextSibling(to, currentTo);
           continue;
         }
-        if (toKey && !domKey) {
-          if (domKeyDomNodeMap[toKey]) {
-            currentFrom = dom(currentFrom).replace(domKeyDomNodeMap[toKey]);
-            await breakpoint('No "from" key');
+        if (toKey && !fromKey) {
+          if (fromKeys[toKey]) {
+            currentFrom.replaceWith(fromKeys[toKey]);
+            currentFrom = fromKeys[toKey];
           }
         }
-        if (toKey && domKey) {
-          domKeyHoldovers[domKey] = currentFrom;
-          let domKeyNode = domKeyDomNodeMap[toKey];
-          if (domKeyNode) {
-            currentFrom = dom(currentFrom).replace(domKeyNode);
-            await breakpoint('Move "from" key');
+        if (toKey && fromKey) {
+          let fromKeyNode = fromKeys[toKey];
+          if (fromKeyNode) {
+            fromKeyHoldovers[fromKey] = currentFrom;
+            currentFrom.replaceWith(fromKeyNode);
+            currentFrom = fromKeyNode;
           } else {
-            domKeyHoldovers[domKey] = currentFrom;
-            currentFrom = addNodeBefore(currentTo, currentFrom);
-            domKeyHoldovers[domKey].remove();
-            currentFrom = dom(currentFrom).next();
-            currentTo = dom(currentTo).next();
-            await breakpoint("Swap elements with keys");
+            fromKeyHoldovers[fromKey] = currentFrom;
+            currentFrom = addNodeBefore(from2, currentTo, currentFrom);
+            fromKeyHoldovers[fromKey].remove();
+            currentFrom = getNextSibling(from2, currentFrom);
+            currentTo = getNextSibling(to, currentTo);
             continue;
           }
         }
       }
-      let currentFromNext = currentFrom && dom(currentFrom).nodes().next();
-      await patch(currentFrom, currentTo);
-      currentTo = currentTo && dom(currentTo).nodes().next();
+      let currentFromNext = currentFrom && getNextSibling(from2, currentFrom);
+      patch(currentFrom, currentTo);
+      currentTo = currentTo && getNextSibling(to, currentTo);
       currentFrom = currentFromNext;
     }
     let removals = [];
     while (currentFrom) {
       if (!shouldSkip(removing, currentFrom))
         removals.push(currentFrom);
-      currentFrom = dom(currentFrom).nodes().next();
+      currentFrom = getNextSibling(from2, currentFrom);
     }
     while (removals.length) {
       let domForRemoval = removals.shift();
       domForRemoval.remove();
-      await breakpoint("remove el");
       removed(domForRemoval);
     }
   }
@@ -271,60 +234,117 @@ async function morph(from, toHtml, options) {
   }
   function keyToMap(els) {
     let map = {};
-    els.forEach((el) => {
+    for (let el of els) {
       let theKey = getKey(el);
       if (theKey) {
         map[theKey] = el;
       }
-    });
+    }
     return map;
   }
-  function addNodeTo(node, parent) {
+  function addNodeBefore(parent, node, beforeMe) {
     if (!shouldSkip(adding, node)) {
       let clone = node.cloneNode(true);
-      dom(parent).append(clone);
+      parent.insertBefore(clone, beforeMe);
       added(clone);
       return clone;
     }
-    return null;
-  }
-  function addNodeBefore(node, beforeMe) {
-    if (!shouldSkip(adding, node)) {
-      let clone = node.cloneNode(true);
-      dom(beforeMe).before(clone);
-      added(clone);
-      return clone;
-    }
-    return beforeMe;
+    return node;
   }
   assignOptions(options);
   fromEl = from;
-  toEl = createElement(toHtml);
+  toEl = typeof toHtml === "string" ? createElement(toHtml) : toHtml;
   if (window.Alpine && window.Alpine.closestDataStack && !from._x_dataStack) {
     toEl._x_dataStack = window.Alpine.closestDataStack(from);
-    toEl._x_dataStack && window.Alpine.clone(from, toEl);
+    toEl._x_dataStack && window.Alpine.cloneNode(from, toEl);
   }
-  await breakpoint();
-  await patch(from, toEl);
+  patch(from, toEl);
   fromEl = void 0;
   toEl = void 0;
   return from;
 }
-morph.step = () => resolveStep();
-morph.log = (theLogger) => {
-  logger = theLogger;
+morph.step = () => {
+};
+morph.log = () => {
 };
 function shouldSkip(hook, ...args) {
   let skip = false;
   hook(...args, () => skip = true);
   return skip;
 }
-function initializeAlpineOnTo(from, to, childrenOnly) {
-  if (from.nodeType !== 1)
-    return;
-  if (from._x_dataStack) {
-    window.Alpine.clone(from, to);
+var patched = false;
+function createElement(html) {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  return template.content.firstElementChild;
+}
+function textOrComment(el) {
+  return el.nodeType === 3 || el.nodeType === 8;
+}
+var Block = class {
+  constructor(start, end) {
+    this.startComment = start;
+    this.endComment = end;
   }
+  get children() {
+    let children = [];
+    let currentNode = this.startComment.nextSibling;
+    while (currentNode && currentNode !== this.endComment) {
+      children.push(currentNode);
+      currentNode = currentNode.nextSibling;
+    }
+    return children;
+  }
+  appendChild(child) {
+    this.endComment.before(child);
+  }
+  get firstChild() {
+    let first = this.startComment.nextSibling;
+    if (first === this.endComment)
+      return;
+    return first;
+  }
+  nextNode(reference) {
+    let next = reference.nextSibling;
+    if (next === this.endComment)
+      return;
+    return next;
+  }
+  insertBefore(newNode, reference) {
+    reference.before(newNode);
+    return newNode;
+  }
+};
+function getFirstNode(parent) {
+  return parent.firstChild;
+}
+function getNextSibling(parent, reference) {
+  if (reference._x_teleport) {
+    return reference._x_teleport;
+  }
+  let next;
+  if (parent instanceof Block) {
+    next = parent.nextNode(reference);
+  } else {
+    next = reference.nextSibling;
+  }
+  return next;
+}
+function monkeyPatchDomSetAttributeToAllowAtSymbols() {
+  if (patched)
+    return;
+  patched = true;
+  let original = Element.prototype.setAttribute;
+  let hostDiv = document.createElement("div");
+  Element.prototype.setAttribute = function newSetAttribute(name, value) {
+    if (!name.includes("@")) {
+      return original.call(this, name, value);
+    }
+    hostDiv.innerHTML = `<span ${name}="${value}"></span>`;
+    let attr = hostDiv.firstElementChild.getAttributeNode(name);
+    hostDiv.firstElementChild.removeAttributeNode(attr);
+    this.setAttributeNode(attr);
+  };
 }
 
 // packages/morph/src/index.js
@@ -334,3 +354,7 @@ function src_default(Alpine) {
 
 // packages/morph/builds/module.js
 var module_default = src_default;
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  morph
+});

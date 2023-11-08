@@ -18,6 +18,23 @@ export default function on (el, event, modifiers, callback) {
     if (modifiers.includes('capture')) options.capture = true
     if (modifiers.includes('window')) listenerTarget = window
     if (modifiers.includes('document')) listenerTarget = document
+
+    // By wrapping the handler with debounce & throttle first, we ensure that the wrapping logic itself is not
+    // throttled/debounced, only the user's callback is. This way, if the user expects
+    // `e.preventDefault()` to happen, it'll still happen even if their callback gets throttled.
+    if (modifiers.includes('debounce')) {
+        let nextModifier = modifiers[modifiers.indexOf('debounce')+1] || 'invalid-wait'
+        let wait = isNumeric(nextModifier.split('ms')[0]) ? Number(nextModifier.split('ms')[0]) : 250
+
+        handler = debounce(handler, wait)
+    }
+    if (modifiers.includes('throttle')) {
+        let nextModifier = modifiers[modifiers.indexOf('throttle')+1] || 'invalid-wait'
+        let wait = isNumeric(nextModifier.split('ms')[0]) ? Number(nextModifier.split('ms')[0]) : 250
+
+        handler = throttle(handler, wait)
+    }
+
     if (modifiers.includes('prevent')) handler = wrapHandler(handler, (next, e) => { e.preventDefault(); next(e) })
     if (modifiers.includes('stop')) handler = wrapHandler(handler, (next, e) => { e.stopPropagation(); next(e) })
     if (modifiers.includes('self')) handler = wrapHandler(handler, (next, e) => { e.target === el && next(e) })
@@ -59,20 +76,6 @@ export default function on (el, event, modifiers, callback) {
         next(e)
     })
 
-    if (modifiers.includes('debounce')) {
-        let nextModifier = modifiers[modifiers.indexOf('debounce')+1] || 'invalid-wait'
-        let wait = isNumeric(nextModifier.split('ms')[0]) ? Number(nextModifier.split('ms')[0]) : 250
-
-        handler = debounce(handler, wait)
-    }
-
-    if (modifiers.includes('throttle')) {
-        let nextModifier = modifiers[modifiers.indexOf('throttle')+1] || 'invalid-wait'
-        let wait = isNumeric(nextModifier.split('ms')[0]) ? Number(nextModifier.split('ms')[0]) : 250
-
-        handler = throttle(handler, wait)
-    }
-
     listenerTarget.addEventListener(event, handler, options)
 
     return () => {
@@ -93,6 +96,8 @@ function isNumeric(subject){
 }
 
 function kebabCase(subject) {
+    if ([' ','_'].includes(subject
+    )) return subject
     return subject.replace(/([a-z])([A-Z])/g, '$1-$2').replace(/[_\s]/, '-').toLowerCase()
 }
 
@@ -102,11 +107,16 @@ function isKeyEvent(event) {
 
 function isListeningForASpecificKeyThatHasntBeenPressed(e, modifiers) {
     let keyModifiers = modifiers.filter(i => {
-        return ! ['window', 'document', 'prevent', 'stop', 'once'].includes(i)
+        return ! ['window', 'document', 'prevent', 'stop', 'once', 'capture'].includes(i)
     })
 
     if (keyModifiers.includes('debounce')) {
         let debounceIndex = keyModifiers.indexOf('debounce')
+        keyModifiers.splice(debounceIndex, isNumeric((keyModifiers[debounceIndex+1] || 'invalid-wait').split('ms')[0]) ? 2 : 1)
+    }
+
+    if (keyModifiers.includes('throttle')) {
+        let debounceIndex = keyModifiers.indexOf('throttle')
         keyModifiers.splice(debounceIndex, isNumeric((keyModifiers[debounceIndex+1] || 'invalid-wait').split('ms')[0]) ? 2 : 1)
     }
 
@@ -149,8 +159,8 @@ function keyToModifiers(key) {
     let modifierToKeyMap = {
         'ctrl': 'control',
         'slash': '/',
-        'space': '-',
-        'spacebar': '-',
+        'space': ' ',
+        'spacebar': ' ',
         'cmd': 'meta',
         'esc': 'escape',
         'up': 'arrow-up',
@@ -159,6 +169,8 @@ function keyToModifiers(key) {
         'right': 'arrow-right',
         'period': '.',
         'equal': '=',
+        'minus': '-',
+        'underscore': '_',
     }
 
     modifierToKeyMap[key] = key
