@@ -1931,12 +1931,7 @@ function injectMagics(obj, el) {
       enumerable: false
     });
   });
-  return {
-    obj,
-    cleanup: () => {
-      el = null;
-    }
-  };
+  return obj;
 }
 
 // packages/alpinejs/src/utils/error.js
@@ -1980,8 +1975,7 @@ function setEvaluator(newEvaluator) {
 }
 function normalEvaluator(el, expression) {
   let overriddenMagics = {};
-  let cleanup = injectMagics(overriddenMagics, el).cleanup;
-  onAttributeRemoved(el, "evaluator", cleanup);
+  injectMagics(overriddenMagics, el);
   let dataStack = [overriddenMagics, ...closestDataStack(el)];
   let evaluator = typeof expression === "function" ? generateEvaluatorFromFunction(dataStack, expression) : generateEvaluatorFromString(dataStack, expression, el);
   return tryCatch.bind(null, el, expression, evaluator);
@@ -3628,13 +3622,13 @@ directive("data", (el, { expression }, { cleanup }) => {
     return;
   expression = expression === "" ? "{}" : expression;
   let magicContext = {};
-  let cleanup1 = injectMagics(magicContext, el).cleanup;
+  injectMagics(magicContext, el);
   let dataProviderContext = {};
   injectDataProviders(dataProviderContext, magicContext);
   let data2 = evaluate(el, expression, { scope: dataProviderContext });
   if (data2 === void 0 || data2 === true)
     data2 = {};
-  let cleanup2 = injectMagics(data2, el).cleanup;
+  injectMagics(data2, el);
   let reactiveData = reactive(data2);
   initInterceptors2(reactiveData);
   let undo = addScopeToNode(el, reactiveData);
@@ -3642,8 +3636,6 @@ directive("data", (el, { expression }, { cleanup }) => {
   cleanup(() => {
     reactiveData["destroy"] && evaluate(el, reactiveData["destroy"]);
     undo();
-    cleanup1();
-    cleanup2();
   });
 });
 

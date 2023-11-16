@@ -33,11 +33,5 @@ export function injectMagics(obj, el) {
         })
     })
 
-    return {
-        obj,
-        cleanup: () => {
-            // MemLeak1: Issue #2140
-            el = null;
-        }
-    };
+    return obj
 }
