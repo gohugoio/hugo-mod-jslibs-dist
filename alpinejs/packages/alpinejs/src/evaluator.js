@@ -1,6 +1,7 @@
 import { closestDataStack, mergeProxies } from './scope'
 import { injectMagics } from './magics'
 import { tryCatch, handleError } from './utils/error'
+import { onAttributeRemoved } from './mutation'
 
 let shouldAutoEvaluateFunctions = true
 
@@ -37,7 +38,10 @@ export function setEvaluator(newEvaluator) {
 export function normalEvaluator(el, expression) {
     let overriddenMagics = {}
 
-    injectMagics(overriddenMagics, el)
+    let cleanup = injectMagics(overriddenMagics, el).cleanup
+
+     // MemLeak1: Issue #2140 (note: there are other uses of injectMagics)
+     onAttributeRemoved(el, "evaluator", cleanup)
 
     let dataStack = [overriddenMagics, ...closestDataStack(el)]
 

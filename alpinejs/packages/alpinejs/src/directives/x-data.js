@@ -16,7 +16,7 @@ directive('data', ((el, { expression }, { cleanup }) => {
     expression = expression === '' ? '{}' : expression
 
     let magicContext = {}
-    injectMagics(magicContext, el)
+    let cleanup1 = injectMagics(magicContext, el).cleanup
 
     let dataProviderContext = {}
     injectDataProviders(dataProviderContext, magicContext)
@@ -25,7 +25,7 @@ directive('data', ((el, { expression }, { cleanup }) => {
 
     if (data === undefined || data === true) data = {}
 
-    injectMagics(data, el)
+    let cleanup2 = injectMagics(data, el).cleanup
 
     let reactiveData = reactive(data)
 
@@ -39,5 +39,9 @@ directive('data', ((el, { expression }, { cleanup }) => {
         reactiveData['destroy'] && evaluate(el, reactiveData['destroy'])
 
         undo()
+
+         // MemLeak1: Issue #2140
+         cleanup1()
+         cleanup2()
     })
 }))
