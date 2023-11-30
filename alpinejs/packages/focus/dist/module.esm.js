@@ -940,13 +940,13 @@ function src_default(Alpine) {
         if (oldValue === value)
           return;
         if (value && !oldValue) {
+          if (modifiers.includes("noscroll"))
+            undoDisableScrolling = disableScrolling();
+          if (modifiers.includes("inert"))
+            undoInert = setInert(el);
           setTimeout(() => {
-            if (modifiers.includes("inert"))
-              undoInert = setInert(el);
-            if (modifiers.includes("noscroll"))
-              undoDisableScrolling = disableScrolling();
             trap.activate();
-          });
+          }, 15);
         }
         if (!value && oldValue) {
           releaseFocus();

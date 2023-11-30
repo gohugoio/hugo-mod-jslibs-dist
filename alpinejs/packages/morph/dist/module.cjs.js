@@ -109,11 +109,16 @@ function morph(from, toHtml, options) {
     }
   }
   function patchChildren(from2, to) {
+    if (from2._x_teleport)
+      from2 = from2._x_teleport;
+    if (to._x_teleport)
+      to = to._x_teleport;
     let fromKeys = keyToMap(from2.children);
     let fromKeyHoldovers = {};
     let currentTo = getFirstNode(to);
     let currentFrom = getFirstNode(from2);
     while (currentTo) {
+      seedingMatchingId(currentTo, currentFrom);
       let toKey = getKey(currentTo);
       let fromKey = getKey(currentFrom);
       if (!currentFrom) {
@@ -319,9 +324,6 @@ function getFirstNode(parent) {
   return parent.firstChild;
 }
 function getNextSibling(parent, reference) {
-  if (reference._x_teleport) {
-    return reference._x_teleport;
-  }
   let next;
   if (parent instanceof Block) {
     next = parent.nextNode(reference);
@@ -345,6 +347,13 @@ function monkeyPatchDomSetAttributeToAllowAtSymbols() {
     hostDiv.firstElementChild.removeAttributeNode(attr);
     this.setAttributeNode(attr);
   };
+}
+function seedingMatchingId(to, from) {
+  let fromId = from && from._x_bindings && from._x_bindings.id;
+  if (!fromId)
+    return;
+  to.setAttribute("id", fromId);
+  to.id = fromId;
 }
 
 // packages/morph/src/index.js

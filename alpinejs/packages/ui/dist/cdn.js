@@ -244,6 +244,8 @@
             break;
           case "Home":
           case "PageUp":
+            if (e.key == "Home" && e.shiftKey)
+              return;
             e.preventDefault();
             e.stopPropagation();
             setIsTyping(false);
@@ -253,6 +255,8 @@
             break;
           case "End":
           case "PageDown":
+            if (e.key == "End" && e.shiftKey)
+              return;
             e.preventDefault();
             e.stopPropagation();
             setIsTyping(false);
@@ -527,7 +531,12 @@
               by = (a2, b2) => Alpine.raw(a2) === Alpine.raw(b2);
             if (typeof by === "string") {
               let property = by;
-              by = (a2, b2) => a2[property] === b2[property];
+              by = (a2, b2) => {
+                if (!a2 || typeof a2 !== "object" || (!b2 || typeof b2 !== "object")) {
+                  return Alpine.raw(a2) === Alpine.raw(b2);
+                }
+                return a2[property] === b2[property];
+              };
             }
             return by(a, b);
           }
@@ -728,7 +737,7 @@
       },
       // Only the active element should have aria-selected="true"...
       "x-effect"() {
-        this.$comboboxOption.isActive ? el.setAttribute("aria-selected", true) : el.removeAttribute("aria-selected");
+        this.$comboboxOption.isSelected ? el.setAttribute("aria-selected", true) : el.setAttribute("aria-selected", false);
       },
       ":aria-disabled"() {
         return this.$comboboxOption.isDisabled;
@@ -1589,7 +1598,7 @@
           return $data.__activeEl == $data.__itemEl;
         },
         get isDisabled() {
-          return el.__isDisabled.value;
+          return $data.__itemEl.__isDisabled.value;
         }
       };
     });
@@ -1605,10 +1614,13 @@
           __itemEls: [],
           __activeEl: null,
           __isOpen: false,
-          __open() {
+          __open(activationStrategy) {
             this.__isOpen = true;
             let nextTick = (callback) => requestAnimationFrame(() => requestAnimationFrame(callback));
-            nextTick(() => this.$refs.__items.focus({ preventScroll: true }));
+            nextTick(() => {
+              this.$refs.__items.focus({ preventScroll: true });
+              activationStrategy && activationStrategy(Alpine, this.$refs.__items, (el2) => el2.__activate());
+            });
           },
           __close(focusAfter = true) {
             this.__isOpen = false;
@@ -1653,7 +1665,7 @@
         this.$data.__open();
       },
       "@keydown.up.stop.prevent"() {
-        this.$data.__open(dom.Alpine, last);
+        this.$data.__open(dom.last);
       },
       "@keydown.space.stop.prevent"() {
         this.$data.__open();
@@ -1770,14 +1782,14 @@
           return this.$id("alpine-menu-item");
         },
         ":tabindex"() {
-          return this.$el.__isDisabled.value ? false : "-1";
+          return this.__itemEl.__isDisabled.value ? false : "-1";
         },
         "role": "menuitem",
         "@mousemove"() {
-          this.$el.__isDisabled.value || this.$menuItem.isActive || this.$el.__activate();
+          this.__itemEl.__isDisabled.value || this.$menuItem.isActive || this.__itemEl.__activate();
         },
         "@mouseleave"() {
-          this.$el.__isDisabled.value || !this.$menuItem.isActive || this.$el.__deactivate();
+          this.__itemEl.__isDisabled.value || !this.$menuItem.isActive || this.__itemEl.__deactivate();
         }
       };
     });
@@ -1797,12 +1809,12 @@
     },
     last(Alpine, parent, receive = (i) => i, fallback = () => {
     }) {
-      let last2 = Alpine.$data(parent).__itemEls.slice(-1)[0];
-      if (!last2)
+      let last = Alpine.$data(parent).__itemEls.slice(-1)[0];
+      if (!last)
         return fallback();
-      if (last2.__isDisabled.value)
-        return this.previous(Alpine, last2, receive);
-      return receive(last2);
+      if (last.__isDisabled.value)
+        return this.previous(Alpine, last, receive);
+      return receive(last);
     },
     next(Alpine, el, receive = (i) => i, fallback = () => {
     }) {
