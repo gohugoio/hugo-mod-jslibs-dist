@@ -19,6 +19,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // packages/collapse/builds/module.js
 var module_exports = {};
 __export(module_exports, {
+  collapse: () => src_default,
   default: () => module_default
 });
 module.exports = __toCommonJS(module_exports);
@@ -119,4 +120,6 @@ function modifierValue(modifiers, key, fallback) {
 // packages/collapse/builds/module.js
 var module_default = src_default;
 // Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {});
+0 && (module.exports = {
+  collapse
+});

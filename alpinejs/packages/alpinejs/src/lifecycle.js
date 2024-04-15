@@ -3,7 +3,6 @@ import { deferHandlingDirectives, directives } from "./directives"
 import { dispatch } from './utils/dispatch'
 import { walk } from "./utils/walk"
 import { warn } from './utils/warn'
-import Alpine from "./alpine"
 
 let started = false
 
@@ -93,8 +92,8 @@ export function initTree(el, walker = walk, intercept = () => {}) {
     })
 }
 
-export function destroyTree(root) {
-    walk(root, el => {
+export function destroyTree(root, walker = walk) {
+    walker(root, el => {
         cleanupAttributes(el)
         cleanupElement(el)
     })

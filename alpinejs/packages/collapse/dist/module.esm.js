@@ -94,5 +94,6 @@ function modifierValue(modifiers, key, fallback) {
 // packages/collapse/builds/module.js
 var module_default = src_default;
 export {
+  src_default as collapse,
   module_default as default
 };

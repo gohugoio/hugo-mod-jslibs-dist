@@ -65,27 +65,24 @@ export function stopObservingMutations() {
     currentlyObserving = false
 }
 
-let recordQueue = []
-let willProcessRecordQueue = false
+let queuedMutations = []
 
 export function flushObserver() {
-    recordQueue = recordQueue.concat(observer.takeRecords())
+    let records = observer.takeRecords()
 
-    if (recordQueue.length && ! willProcessRecordQueue) {
-        willProcessRecordQueue = true
+    queuedMutations.push(() => records.length > 0 && onMutate(records))
 
-        queueMicrotask(() => {
-            processRecordQueue()
+    let queueLengthWhenTriggered = queuedMutations.length
 
-            willProcessRecordQueue = false
-        })
-    }
-}
-
-function processRecordQueue() {
-     onMutate(recordQueue)
-
-     recordQueue.length = 0
+    queueMicrotask(() => {
+        // If these two lengths match, then we KNOW that this is the LAST
+        // flush in the current event loop. This way, we can process
+        // all mutations in one batch at the end of everything...
+        if (queuedMutations.length === queueLengthWhenTriggered) {
+            // Now Alpine can process all the mutations...
+            while (queuedMutations.length > 0) queuedMutations.shift()()
+        }
+    })
 }
 
 export function mutateDom(callback) {
@@ -122,8 +119,8 @@ function onMutate(mutations) {
         return
     }
 
-    let addedNodes = []
-    let removedNodes = []
+    let addedNodes = new Set
+    let removedNodes = new Set
     let addedAttributes = new Map
     let removedAttributes = new Map
 
@@ -131,8 +128,8 @@ function onMutate(mutations) {
         if (mutations[i].target._x_ignoreMutationObserver) continue
 
         if (mutations[i].type === 'childList') {
-            mutations[i].addedNodes.forEach(node => node.nodeType === 1 && addedNodes.push(node))
-            mutations[i].removedNodes.forEach(node => node.nodeType === 1 && removedNodes.push(node))
+            mutations[i].addedNodes.forEach(node => node.nodeType === 1 && addedNodes.add(node))
+            mutations[i].removedNodes.forEach(node => node.nodeType === 1 && removedNodes.add(node))
         }
 
         if (mutations[i].type === 'attributes') {
@@ -177,7 +174,7 @@ function onMutate(mutations) {
     for (let node of removedNodes) {
         // If an element gets moved on a page, it's registered
         // as both an "add" and "remove", so we want to skip those.
-        if (addedNodes.includes(node)) continue
+        if (addedNodes.has(node)) continue
 
         onElRemoveds.forEach(i => i(node))
 
@@ -197,12 +194,9 @@ function onMutate(mutations) {
         node._x_ignore = true
     })
     for (let node of addedNodes) {
-        // If an element gets moved on a page, it's registered
-        // as both an "add" and "remove", so we want to skip those.
-        if (removedNodes.includes(node)) continue
-
         // If the node was eventually removed as part of one of his
         // parent mutations, skip it
+        if (removedNodes.has(node)) continue
         if (! node.isConnected) continue
 
         delete node._x_ignoreSelf

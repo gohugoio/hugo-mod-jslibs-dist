@@ -4,7 +4,6 @@ import { mutateDom } from '../mutation'
 import { nextTick } from '../nextTick'
 import bind, { safeParseBoolean } from '../utils/bind'
 import on from '../utils/on'
-import { warn } from '../utils/warn'
 import { isCloning } from '../clone'
 
 directive('model', (el, { modifiers, expression }, { effect, cleanup }) => {
@@ -71,9 +70,11 @@ directive('model', (el, { modifiers, expression }, { effect, cleanup }) => {
     })
 
     if (modifiers.includes('fill'))
-        if ([null, ''].includes(getValue())
+        if ([undefined, null, ''].includes(getValue())
             || (el.type === 'checkbox' && Array.isArray(getValue()))) {
-            el.dispatchEvent(new Event(event, {}));
+        setValue(
+            getInputValue(el, modifiers, { target: el }, getValue())
+        );
     }
     // Register the listener removal callback on the element, so that
     // in addition to the cleanup function, x-modelable may call it.
@@ -169,13 +170,27 @@ function getInputValue(el, modifiers, event, currentValue) {
                 return option.value || option.text
             })
         } else {
-            if (modifiers.includes('number')) {
-                return safeParseNumber(event.target.value)
-            } else if (modifiers.includes('boolean')) {
-                return safeParseBoolean(event.target.value)
+            let newValue
+
+            if (el.type === 'radio') {
+                if (event.target.checked) {
+                    newValue = event.target.value
+                } else {
+                    newValue = currentValue
+                }
+            } else {
+                newValue = event.target.value
             }
 
-            return modifiers.includes('trim') ? event.target.value.trim() : event.target.value
+            if (modifiers.includes('number')) {
+                return safeParseNumber(newValue)
+            } else if (modifiers.includes('boolean')) {
+                return safeParseBoolean(newValue)
+            } else if (modifiers.includes('trim')) {
+                return newValue.trim()
+            } else {
+                return newValue
+            }
         }
     })
 }

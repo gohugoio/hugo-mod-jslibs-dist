@@ -48,19 +48,23 @@ export default function (Alpine) {
     Alpine.magic('listboxOption', (el) => {
         let data = Alpine.$data(el)
 
-        let optionEl = Alpine.findClosest(el, i => i.__optionKey)
+        // It's not great depending on the existance of the attribute in the DOM
+        // but it's probably the fastest and most reliable at this point...
+        let optionEl = Alpine.findClosest(el, i => {
+            return i.hasAttribute('x-listbox:option')
+        })
 
-        if (! optionEl) throw 'No x-combobox:option directive found...'
+        if (! optionEl) throw 'No x-listbox:option directive found...'
 
         return {
             get isActive() {
-                return data.__context.isActiveKey(optionEl.__optionKey)
+                return data.__context.isActiveKey(Alpine.$data(optionEl).__optionKey)
             },
             get isSelected() {
                 return data.__isSelected(optionEl)
             },
             get isDisabled() {
-                return data.__context.isDisabled(optionEl.__optionKey)
+                return data.__context.isDisabled(Alpine.$data(optionEl).__optionKey)
             },
         }
     })
@@ -91,7 +95,7 @@ function handleRoot(el, Alpine) {
                 __hold: false,
 
                 /**
-                 * Comobox initialization...
+                 * Listbox initialization...
                  */
                 init() {
                     this.__isMultiple = Alpine.extractProp(el, 'multiple', false)
@@ -100,7 +104,7 @@ function handleRoot(el, Alpine) {
                     this.__compareBy = Alpine.extractProp(el, 'by')
                     this.__orientation = Alpine.extractProp(el, 'horizontal', false) ? 'horizontal' : 'vertical'
 
-                    this.__context = generateContext(Alpine, this.__isMultiple, this.__orientation, () => this.$data.__activateSelectedOrFirst())
+                    this.__context = generateContext(Alpine, this.__isMultiple, this.__orientation, () => this.__activateSelectedOrFirst())
 
                     let defaultValue = Alpine.extractProp(el, 'default-value', this.__isMultiple ? [] : null)
 
@@ -159,8 +163,8 @@ function handleRoot(el, Alpine) {
                 __activateSelectedOrFirst(activateSelected = true) {
                     if (! this.__isOpen) return
 
-                    if (this.__context.activeKey) {
-                        this.__context.activateAndScrollToKey(this.__context.activeKey)
+                    if (this.__context.getActiveKey()) {
+                        this.__context.activateAndScrollToKey(this.__context.getActiveKey())
                         return
                     }
 
@@ -195,7 +199,7 @@ function handleRoot(el, Alpine) {
                     let item = this.__context.getItemByEl(el)
 
                     if (! item) return false
-                    if (! item.value) return false
+                    if (item.value === null || item.value === undefined) return false
 
                     return this.__hasSelected(item.value)
                 },
@@ -226,7 +230,14 @@ function handleRoot(el, Alpine) {
 
                     if (typeof by === 'string') {
                         let property = by
-                        by = (a, b) => a[property] === b[property]
+                        by = (a, b) => {
+                            // Handle null values
+                            if ((! a || typeof a !== 'object') || (! b || typeof b !== 'object')) {
+                                return Alpine.raw(a) === Alpine.raw(b)
+                            }
+
+                            return a[property] === b[property];
+                        }
                     }
 
                     return by(a, b)
@@ -339,16 +350,18 @@ function handleOption(el, Alpine) {
             // Initialize...
             'x-data'() {
                 return {
+                    '__optionKey': null,
+
                     init() {
-                        let key = el.__optionKey = (Math.random() + 1).toString(36).substring(7)
+                        this.__optionKey = (Math.random() + 1).toString(36).substring(7)
 
                         let value = Alpine.extractProp(el, 'value')
                         let disabled = Alpine.extractProp(el, 'disabled', false, false)
 
-                        this.$data.__context.registerItem(key, el, value, disabled)
+                        this.$data.__context.registerItem(this.__optionKey, el, value, disabled)
                     },
                     destroy() {
-                        this.$data.__context.unregisterItem(this.$el.__optionKey)
+                        this.$data.__context.unregisterItem(this.__optionKey)
                     },
                 }
             },

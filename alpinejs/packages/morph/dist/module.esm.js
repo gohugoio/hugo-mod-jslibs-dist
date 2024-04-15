@@ -339,5 +339,5 @@ function src_default(Alpine) {
 var module_default = src_default;
 export {
   module_default as default,
-  morph
+  src_default as morph
 };

@@ -19,13 +19,14 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // packages/intersect/builds/module.js
 var module_exports = {};
 __export(module_exports, {
-  default: () => module_default
+  default: () => module_default,
+  intersect: () => src_default
 });
 module.exports = __toCommonJS(module_exports);
 
 // packages/intersect/src/index.js
 function src_default(Alpine) {
-  Alpine.directive("intersect", (el, { value, expression, modifiers }, { evaluateLater, cleanup }) => {
+  Alpine.directive("intersect", Alpine.skipDuringClone((el, { value, expression, modifiers }, { evaluateLater, cleanup }) => {
     let evaluate = evaluateLater(expression);
     let options = {
       rootMargin: getRootMargin(modifiers),
@@ -43,7 +44,7 @@ function src_default(Alpine) {
     cleanup(() => {
       observer.disconnect();
     });
-  });
+  }));
 }
 function getThreshold(modifiers) {
   if (modifiers.includes("full"))
@@ -80,4 +81,6 @@ function getRootMargin(modifiers) {
 // packages/intersect/builds/module.js
 var module_default = src_default;
 // Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {});
+0 && (module.exports = {
+  intersect
+});

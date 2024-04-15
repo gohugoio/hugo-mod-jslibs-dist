@@ -19,59 +19,74 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // packages/ui/builds/module.js
 var module_exports = {};
 __export(module_exports, {
-  default: () => module_default
+  default: () => module_default,
+  ui: () => src_default
 });
 module.exports = __toCommonJS(module_exports);
 
 // packages/ui/src/list-context.js
-function generateContext(Alpine, multiple, orientation, activateSelectedOrFirst) {
+function generateContext(Alpine2, multiple, orientation, activateSelectedOrFirst) {
   return {
     /**
      * Main state...
      */
     items: [],
-    activeKey: null,
+    activeKey: switchboard(),
     orderedKeys: [],
     activatedByKeyPress: false,
     /**
      *  Initialization...
      */
-    activateSelectedOrFirst: Alpine.debounce(function() {
+    activateSelectedOrFirst: Alpine2.debounce(function() {
       activateSelectedOrFirst(false);
     }),
+    registerItemsQueue: [],
     registerItem(key, el, value, disabled) {
-      this.items.push({
+      if (this.registerItemsQueue.length === 0) {
+        queueMicrotask(() => {
+          if (this.registerItemsQueue.length > 0) {
+            this.items = this.items.concat(this.registerItemsQueue);
+            this.registerItemsQueue = [];
+            this.reorderKeys();
+            this.activateSelectedOrFirst();
+          }
+        });
+      }
+      let item = {
         key,
         el,
         value,
         disabled
-      });
-      this.orderedKeys.push(key);
-      this.reorderKeys();
-      this.activateSelectedOrFirst();
+      };
+      this.registerItemsQueue.push(item);
     },
+    unregisterKeysQueue: [],
     unregisterItem(key) {
-      let i = this.items.findIndex((i2) => i2.key === key);
-      if (i !== -1)
-        this.items.splice(i, 1);
-      i = this.orderedKeys.indexOf(key);
-      if (i !== -1)
-        this.orderedKeys.splice(i, 1);
-      this.reorderKeys();
-      this.activateSelectedOrFirst();
+      if (this.unregisterKeysQueue.length === 0) {
+        queueMicrotask(() => {
+          if (this.unregisterKeysQueue.length > 0) {
+            this.items = this.items.filter((i) => !this.unregisterKeysQueue.includes(i.key));
+            this.orderedKeys = this.orderedKeys.filter((i) => !this.unregisterKeysQueue.includes(i));
+            this.unregisterKeysQueue = [];
+            this.reorderKeys();
+            this.activateSelectedOrFirst();
+          }
+        });
+      }
+      this.unregisterKeysQueue.push(key);
     },
     getItemByKey(key) {
       return this.items.find((i) => i.key === key);
     },
     getItemByValue(value) {
-      return this.items.find((i) => Alpine.raw(i.value) === Alpine.raw(value));
+      return this.items.find((i) => Alpine2.raw(i.value) === Alpine2.raw(value));
     },
     getItemByEl(el) {
       return this.items.find((i) => i.el === el);
     },
     getItemsByValues(values) {
-      let rawValues = values.map((i) => Alpine.raw(i));
-      let filteredValue = this.items.filter((i) => rawValues.includes(Alpine.raw(i.value)));
+      let rawValues = values.map((i) => Alpine2.raw(i));
+      let filteredValue = this.items.filter((i) => rawValues.includes(Alpine2.raw(i.value)));
       filteredValue = filteredValue.slice().sort((a, b) => {
         let position = a.el.compareDocumentPosition(b.el);
         if (position & Node.DOCUMENT_POSITION_FOLLOWING)
@@ -85,9 +100,9 @@ function generateContext(Alpine, multiple, orientation, activateSelectedOrFirst)
     getActiveItem() {
       if (!this.hasActive())
         return null;
-      let item = this.items.find((i) => i.key === this.activeKey);
+      let item = this.items.find((i) => i.key === this.activeKey.get());
       if (!item)
-        this.deactivateKey(this.activeKey);
+        this.deactivateKey(this.activeKey.get());
       return item;
     },
     activateItem(item) {
@@ -98,7 +113,7 @@ function generateContext(Alpine, multiple, orientation, activateSelectedOrFirst)
     /**
      * Handle elements...
      */
-    reorderKeys: Alpine.debounce(function() {
+    reorderKeys: Alpine2.debounce(function() {
       this.orderedKeys = this.items.map((i) => i.key);
       this.orderedKeys = this.orderedKeys.slice().sort((a, z) => {
         if (a === null || z === null)
@@ -112,17 +127,20 @@ function generateContext(Alpine, multiple, orientation, activateSelectedOrFirst)
           return 1;
         return 0;
       });
-      if (!this.orderedKeys.includes(this.activeKey))
-        this.deactivateKey(this.activeKey);
+      if (!this.orderedKeys.includes(this.activeKey.get()))
+        this.deactivateKey(this.activeKey.get());
     }),
+    getActiveKey() {
+      return this.activeKey.get();
+    },
     activeEl() {
-      if (!this.activeKey)
+      if (!this.activeKey.get())
         return;
-      return this.items.find((i) => i.key === this.activeKey).el;
+      return this.items.find((i) => i.key === this.activeKey.get()).el;
     },
     isActiveEl(el) {
       let key = this.items.find((i) => i.el === el);
-      return this.activeKey === key;
+      return this.activeKey.is(key);
     },
     activateEl(el) {
       let item = this.items.find((i) => i.el === el);
@@ -162,7 +180,7 @@ function generateContext(Alpine, multiple, orientation, activateSelectedOrFirst)
      * Handle activated keys...
      */
     hasActive() {
-      return !!this.activeKey;
+      return !!this.activeKey.get();
     },
     /**
      * Return true if the latest active element was activated
@@ -174,41 +192,41 @@ function generateContext(Alpine, multiple, orientation, activateSelectedOrFirst)
       return this.activatedByKeyPress;
     },
     isActiveKey(key) {
-      return this.activeKey === key;
+      return this.activeKey.is(key);
     },
     activateKey(key, activatedByKeyPress = false) {
       if (this.isDisabled(key))
         return;
-      this.activeKey = key;
+      this.activeKey.set(key);
       this.activatedByKeyPress = activatedByKeyPress;
     },
     deactivateKey(key) {
-      if (this.activeKey === key) {
-        this.activeKey = null;
+      if (this.activeKey.get() === key) {
+        this.activeKey.set(null);
         this.activatedByKeyPress = false;
       }
     },
     deactivate() {
-      if (!this.activeKey)
+      if (!this.activeKey.get())
         return;
       if (this.isScrollingTo)
         return;
-      this.activeKey = null;
+      this.activeKey.set(null);
       this.activatedByKeyPress = false;
     },
     /**
      * Handle active key traversal...
      */
     nextKey() {
-      if (!this.activeKey)
+      if (!this.activeKey.get())
         return;
-      let index = this.nonDisabledOrderedKeys.findIndex((i) => i === this.activeKey);
+      let index = this.nonDisabledOrderedKeys.findIndex((i) => i === this.activeKey.get());
       return this.nonDisabledOrderedKeys[index + 1];
     },
     prevKey() {
-      if (!this.activeKey)
+      if (!this.activeKey.get())
         return;
-      let index = this.nonDisabledOrderedKeys.findIndex((i) => i === this.activeKey);
+      let index = this.nonDisabledOrderedKeys.findIndex((i) => i === this.activeKey.get());
       return this.nonDisabledOrderedKeys[index - 1];
     },
     firstKey() {
@@ -218,7 +236,7 @@ function generateContext(Alpine, multiple, orientation, activateSelectedOrFirst)
       return this.nonDisabledOrderedKeys[this.nonDisabledOrderedKeys.length - 1];
     },
     searchQuery: "",
-    clearSearch: Alpine.debounce(function() {
+    clearSearch: Alpine2.debounce(function() {
       this.searchQuery = "";
     }, 350),
     searchKey(query) {
@@ -301,7 +319,7 @@ function generateContext(Alpine, multiple, orientation, activateSelectedOrFirst)
     }
   };
 }
-function renderHiddenInputs(Alpine, el, name, value) {
+function renderHiddenInputs(Alpine2, el, name, value) {
   let newInputs = generateInputs(name, value);
   newInputs.forEach((i) => i._x_hiddenInput = true);
   newInputs.forEach((i) => i._x_ignore = true);
@@ -314,7 +332,7 @@ function renderHiddenInputs(Alpine, el, name, value) {
     else
       break;
   }
-  Alpine.mutateDom(() => {
+  Alpine2.mutateDom(() => {
     oldInputs.forEach((i) => i.remove());
     newInputs.reverse().forEach((i) => el.prepend(i));
   });
@@ -338,25 +356,57 @@ function generateInputs(name, value, carry = []) {
 function isObjectOrArray(subject) {
   return typeof subject === "object" && subject !== null;
 }
+function switchboard(value) {
+  let lookup = {};
+  let current;
+  let changeTracker = Alpine.reactive({ state: false });
+  let get = () => {
+    if (changeTracker.state) {
+    }
+    return current;
+  };
+  let set = (newValue) => {
+    if (newValue === current)
+      return;
+    if (current !== void 0)
+      lookup[current].state = false;
+    current = newValue;
+    if (lookup[newValue] === void 0) {
+      lookup[newValue] = Alpine.reactive({ state: true });
+    } else {
+      lookup[newValue].state = true;
+    }
+    changeTracker.state = !changeTracker.state;
+  };
+  let is = (comparisonValue) => {
+    if (lookup[comparisonValue] === void 0) {
+      lookup[comparisonValue] = Alpine.reactive({ state: false });
+      return lookup[comparisonValue].state;
+    }
+    return !!lookup[comparisonValue].state;
+  };
+  value === void 0 || set(value);
+  return { get, set, is };
+}
 
 // packages/ui/src/combobox.js
-function combobox_default(Alpine) {
-  Alpine.directive("combobox", (el, directive, { evaluate }) => {
+function combobox_default(Alpine2) {
+  Alpine2.directive("combobox", (el, directive, { evaluate }) => {
     if (directive.value === "input")
-      handleInput(el, Alpine);
+      handleInput(el, Alpine2);
     else if (directive.value === "button")
-      handleButton(el, Alpine);
+      handleButton(el, Alpine2);
     else if (directive.value === "label")
-      handleLabel(el, Alpine);
+      handleLabel(el, Alpine2);
     else if (directive.value === "options")
-      handleOptions(el, Alpine);
+      handleOptions(el, Alpine2);
     else if (directive.value === "option")
-      handleOption(el, Alpine, directive, evaluate);
+      handleOption(el, Alpine2, directive, evaluate);
     else
-      handleRoot(el, Alpine);
+      handleRoot(el, Alpine2);
   }).before("bind");
-  Alpine.magic("combobox", (el) => {
-    let data = Alpine.$data(el);
+  Alpine2.magic("combobox", (el) => {
+    let data = Alpine2.$data(el);
     return {
       get value() {
         return data.__value;
@@ -376,32 +426,34 @@ function combobox_default(Alpine) {
         var _a;
         let active = (_a = data.__context) == null ? void 0 : _a.getActiveItem();
         if (active) {
-          return Object.values(Alpine.raw(data.__context.items)).findIndex((i) => Alpine.raw(active) == Alpine.raw(i));
+          return Object.values(Alpine2.raw(data.__context.items)).findIndex((i) => Alpine2.raw(active) == Alpine2.raw(i));
         }
         return null;
       }
     };
   });
-  Alpine.magic("comboboxOption", (el) => {
-    let data = Alpine.$data(el);
-    let optionEl = Alpine.findClosest(el, (i) => i.__optionKey);
+  Alpine2.magic("comboboxOption", (el) => {
+    let data = Alpine2.$data(el);
+    let optionEl = Alpine2.findClosest(el, (i) => {
+      return i.hasAttribute("x-combobox:option");
+    });
     if (!optionEl)
       throw "No x-combobox:option directive found...";
     return {
       get isActive() {
-        return data.__context.isActiveKey(optionEl.__optionKey);
+        return data.__context.isActiveKey(Alpine2.$data(optionEl).__optionKey);
       },
       get isSelected() {
         return data.__isSelected(optionEl);
       },
       get isDisabled() {
-        return data.__context.isDisabled(optionEl.__optionKey);
+        return data.__context.isDisabled(Alpine2.$data(optionEl).__optionKey);
       }
     };
   });
 }
-function handleRoot(el, Alpine) {
-  Alpine.bind(el, {
+function handleRoot(el, Alpine2) {
+  Alpine2.bind(el, {
     // Setup...
     "x-id"() {
       return ["alpine-combobox-button", "alpine-combobox-options", "alpine-combobox-label"];
@@ -429,18 +481,19 @@ function handleRoot(el, Alpine) {
          * Combobox initialization...
          */
         init() {
-          this.__isMultiple = Alpine.extractProp(el, "multiple", false);
-          this.__isDisabled = Alpine.extractProp(el, "disabled", false);
-          this.__inputName = Alpine.extractProp(el, "name", null);
-          this.__nullable = Alpine.extractProp(el, "nullable", false);
-          this.__compareBy = Alpine.extractProp(el, "by");
-          this.__context = generateContext(Alpine, this.__isMultiple, "vertical", () => this.__activateSelectedOrFirst());
-          let defaultValue = Alpine.extractProp(el, "default-value", this.__isMultiple ? [] : null);
+          this.__isMultiple = Alpine2.extractProp(el, "multiple", false);
+          this.__isDisabled = Alpine2.extractProp(el, "disabled", false);
+          this.__inputName = Alpine2.extractProp(el, "name", null);
+          this.__nullable = Alpine2.extractProp(el, "nullable", false);
+          this.__compareBy = Alpine2.extractProp(el, "by");
+          this.__context = generateContext(Alpine2, this.__isMultiple, "vertical", () => this.__activateSelectedOrFirst());
+          let defaultValue = Alpine2.extractProp(el, "default-value", this.__isMultiple ? [] : null);
           this.__value = defaultValue;
           queueMicrotask(() => {
-            Alpine.effect(() => {
-              this.__inputName && renderHiddenInputs(Alpine, this.$el, this.__inputName, this.__value);
+            Alpine2.effect(() => {
+              this.__inputName && renderHiddenInputs(Alpine2, this.$el, this.__inputName, this.__value);
             });
+            Alpine2.effect(() => !this.__isMultiple && this.__resetInput());
           });
         },
         __startTyping() {
@@ -530,7 +583,7 @@ function handleRoot(el, Alpine) {
           let item = this.__context.getItemByEl(el2);
           if (!item)
             return false;
-          if (!item.value)
+          if (item.value === null || item.value === void 0)
             return false;
           return this.__hasSelected(item.value);
         },
@@ -554,12 +607,12 @@ function handleRoot(el, Alpine) {
         __compare(a, b) {
           let by = this.__compareBy;
           if (!by)
-            by = (a2, b2) => Alpine.raw(a2) === Alpine.raw(b2);
+            by = (a2, b2) => Alpine2.raw(a2) === Alpine2.raw(b2);
           if (typeof by === "string") {
             let property = by;
             by = (a2, b2) => {
               if (!a2 || typeof a2 !== "object" || (!b2 || typeof b2 !== "object")) {
-                return Alpine.raw(a2) === Alpine.raw(b2);
+                return Alpine2.raw(a2) === Alpine2.raw(b2);
               }
               return a2[property] === b2[property];
             };
@@ -577,8 +630,8 @@ function handleRoot(el, Alpine) {
     }
   });
 }
-function handleInput(el, Alpine) {
-  Alpine.bind(el, {
+function handleInput(el, Alpine2) {
+  Alpine2.bind(el, {
     // Setup...
     "x-ref": "__input",
     ":id"() {
@@ -610,7 +663,7 @@ function handleInput(el, Alpine) {
     },
     // Initialize...
     "x-init"() {
-      let displayValueFn = Alpine.extractProp(this.$el, "display-value");
+      let displayValueFn = Alpine2.extractProp(this.$el, "display-value");
       if (displayValueFn)
         this.$data.__displayValue = displayValueFn;
     },
@@ -668,8 +721,8 @@ function handleInput(el, Alpine) {
     }
   });
 }
-function handleButton(el, Alpine) {
-  Alpine.bind(el, {
+function handleButton(el, Alpine2) {
+  Alpine2.bind(el, {
     // Setup...
     "x-ref": "__button",
     ":id"() {
@@ -712,8 +765,8 @@ function handleButton(el, Alpine) {
     }
   });
 }
-function handleLabel(el, Alpine) {
-  Alpine.bind(el, {
+function handleLabel(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-ref": "__label",
     ":id"() {
       return this.$id("alpine-combobox-label");
@@ -723,8 +776,8 @@ function handleLabel(el, Alpine) {
     }
   });
 }
-function handleOptions(el, Alpine) {
-  Alpine.bind(el, {
+function handleOptions(el, Alpine2) {
+  Alpine2.bind(el, {
     // Setup...
     "x-ref": "__options",
     ":id"() {
@@ -737,8 +790,8 @@ function handleOptions(el, Alpine) {
     },
     // Initialize...
     "x-init"() {
-      this.$data.__isStatic = Alpine.bound(this.$el, "static", false);
-      if (Alpine.bound(this.$el, "hold")) {
+      this.$data.__isStatic = Alpine2.bound(this.$el, "static", false);
+      if (Alpine2.bound(this.$el, "hold")) {
         this.$data.__hold = true;
       }
     },
@@ -747,8 +800,8 @@ function handleOptions(el, Alpine) {
     }
   });
 }
-function handleOption(el, Alpine) {
-  Alpine.bind(el, {
+function handleOption(el, Alpine2) {
+  Alpine2.bind(el, {
     // Setup...
     "x-id"() {
       return ["alpine-combobox-option"];
@@ -771,14 +824,15 @@ function handleOption(el, Alpine) {
     // Initialize...
     "x-data"() {
       return {
+        "__optionKey": null,
         init() {
-          let key = this.$el.__optionKey = (Math.random() + 1).toString(36).substring(7);
-          let value = Alpine.extractProp(this.$el, "value");
-          let disabled = Alpine.extractProp(this.$el, "disabled", false, false);
-          this.__context.registerItem(key, this.$el, value, disabled);
+          this.__optionKey = (Math.random() + 1).toString(36).substring(7);
+          let value = Alpine2.extractProp(this.$el, "value");
+          let disabled = Alpine2.extractProp(this.$el, "disabled", false, false);
+          this.__context.registerItem(this.__optionKey, this.$el, value, disabled);
         },
         destroy() {
-          this.__context.unregisterItem(this.$el.__optionKey);
+          this.__context.unregisterItem(this.__optionKey);
         }
       };
     },
@@ -813,21 +867,21 @@ function microtask(callback) {
 }
 
 // packages/ui/src/dialog.js
-function dialog_default(Alpine) {
-  Alpine.directive("dialog", (el, directive) => {
+function dialog_default(Alpine2) {
+  Alpine2.directive("dialog", (el, directive) => {
     if (directive.value === "overlay")
-      handleOverlay(el, Alpine);
+      handleOverlay(el, Alpine2);
     else if (directive.value === "panel")
-      handlePanel(el, Alpine);
+      handlePanel(el, Alpine2);
     else if (directive.value === "title")
-      handleTitle(el, Alpine);
+      handleTitle(el, Alpine2);
     else if (directive.value === "description")
-      handleDescription(el, Alpine);
+      handleDescription(el, Alpine2);
     else
-      handleRoot2(el, Alpine);
+      handleRoot2(el, Alpine2);
   });
-  Alpine.magic("dialog", (el) => {
-    let $data = Alpine.$data(el);
+  Alpine2.magic("dialog", (el) => {
+    let $data = Alpine2.$data(el);
     return {
       // Kept here for legacy. Remove after out of beta.
       get open() {
@@ -842,32 +896,32 @@ function dialog_default(Alpine) {
     };
   });
 }
-function handleRoot2(el, Alpine) {
-  Alpine.bind(el, {
+function handleRoot2(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-data"() {
       return {
         init() {
-          Alpine.bound(el, "open") !== void 0 && Alpine.effect(() => {
-            this.__isOpenState = Alpine.bound(el, "open");
+          Alpine2.bound(el, "open") !== void 0 && Alpine2.effect(() => {
+            this.__isOpenState = Alpine2.bound(el, "open");
           });
-          if (Alpine.bound(el, "initial-focus") !== void 0)
+          if (Alpine2.bound(el, "initial-focus") !== void 0)
             this.$watch("__isOpenState", () => {
               if (!this.__isOpenState)
                 return;
               setTimeout(() => {
-                Alpine.bound(el, "initial-focus").focus();
+                Alpine2.bound(el, "initial-focus").focus();
               }, 0);
             });
         },
         __isOpenState: false,
         __close() {
-          if (Alpine.bound(el, "open"))
+          if (Alpine2.bound(el, "open"))
             this.$dispatch("close");
           else
             this.__isOpenState = false;
         },
         get __isOpen() {
-          return Alpine.bound(el, "static", this.__isOpenState);
+          return Alpine2.bound(el, "static", this.__isOpenState);
         }
       };
     },
@@ -894,8 +948,8 @@ function handleRoot2(el, Alpine) {
     "aria-modal": "true"
   });
 }
-function handleOverlay(el, Alpine) {
-  Alpine.bind(el, {
+function handleOverlay(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-init"() {
       if (this.$data.__isOpen === void 0)
         console.warn('"x-dialog:overlay" is missing a parent element with "x-dialog".');
@@ -908,8 +962,8 @@ function handleOverlay(el, Alpine) {
     }
   });
 }
-function handlePanel(el, Alpine) {
-  Alpine.bind(el, {
+function handlePanel(el, Alpine2) {
+  Alpine2.bind(el, {
     "@click.outside"() {
       this.$data.__close();
     },
@@ -918,8 +972,8 @@ function handlePanel(el, Alpine) {
     }
   });
 }
-function handleTitle(el, Alpine) {
-  Alpine.bind(el, {
+function handleTitle(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-init"() {
       if (this.$data.__isOpen === void 0)
         console.warn('"x-dialog:title" is missing a parent element with "x-dialog".');
@@ -929,8 +983,8 @@ function handleTitle(el, Alpine) {
     }
   });
 }
-function handleDescription(el, Alpine) {
-  Alpine.bind(el, {
+function handleDescription(el, Alpine2) {
+  Alpine2.bind(el, {
     ":id"() {
       return this.$id("alpine-dialog-description");
     }
@@ -938,17 +992,17 @@ function handleDescription(el, Alpine) {
 }
 
 // packages/ui/src/disclosure.js
-function disclosure_default(Alpine) {
-  Alpine.directive("disclosure", (el, directive) => {
+function disclosure_default(Alpine2) {
+  Alpine2.directive("disclosure", (el, directive) => {
     if (!directive.value)
-      handleRoot3(el, Alpine);
+      handleRoot3(el, Alpine2);
     else if (directive.value === "panel")
-      handlePanel2(el, Alpine);
+      handlePanel2(el, Alpine2);
     else if (directive.value === "button")
-      handleButton2(el, Alpine);
+      handleButton2(el, Alpine2);
   }).before("bind");
-  Alpine.magic("disclosure", (el) => {
-    let $data = Alpine.$data(el);
+  Alpine2.magic("disclosure", (el) => {
+    let $data = Alpine2.$data(el);
     return {
       get isOpen() {
         return $data.__isOpen;
@@ -959,17 +1013,18 @@ function disclosure_default(Alpine) {
     };
   });
 }
-function handleRoot3(el, Alpine) {
-  Alpine.bind(el, {
+function handleRoot3(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-modelable": "__isOpen",
     "x-data"() {
       return {
-        init() {
-          queueMicrotask(() => {
-            let defaultIsOpen = Boolean(Alpine.bound(this.$el, "default-open", false));
-            if (defaultIsOpen)
-              this.__isOpen = defaultIsOpen;
-          });
+        // The panel will call this...
+        // We can't do this inside a microtask in x-init because, when default-open is set to "true",
+        // It will cause the panel to transition in for the first time, instead of showing instantly...
+        __determineDefaultOpenState() {
+          let defaultIsOpen = Boolean(Alpine2.bound(this.$el, "default-open", false));
+          if (defaultIsOpen)
+            this.__isOpen = defaultIsOpen;
         },
         __isOpen: false,
         __close() {
@@ -985,8 +1040,8 @@ function handleRoot3(el, Alpine) {
     }
   });
 }
-function handleButton2(el, Alpine) {
-  Alpine.bind(el, {
+function handleButton2(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-init"() {
       if (this.$el.tagName.toLowerCase() === "button" && !this.$el.hasAttribute("type"))
         this.$el.type = "button";
@@ -1013,8 +1068,11 @@ function handleButton2(el, Alpine) {
     }
   });
 }
-function handlePanel2(el, Alpine) {
-  Alpine.bind(el, {
+function handlePanel2(el, Alpine2) {
+  Alpine2.bind(el, {
+    "x-init"() {
+      this.$data.__determineDefaultOpenState();
+    },
     "x-show"() {
       return this.$data.__isOpen;
     },
@@ -1025,21 +1083,21 @@ function handlePanel2(el, Alpine) {
 }
 
 // packages/ui/src/listbox.js
-function listbox_default(Alpine) {
-  Alpine.directive("listbox", (el, directive) => {
+function listbox_default(Alpine2) {
+  Alpine2.directive("listbox", (el, directive) => {
     if (!directive.value)
-      handleRoot4(el, Alpine);
+      handleRoot4(el, Alpine2);
     else if (directive.value === "label")
-      handleLabel2(el, Alpine);
+      handleLabel2(el, Alpine2);
     else if (directive.value === "button")
-      handleButton3(el, Alpine);
+      handleButton3(el, Alpine2);
     else if (directive.value === "options")
-      handleOptions2(el, Alpine);
+      handleOptions2(el, Alpine2);
     else if (directive.value === "option")
-      handleOption2(el, Alpine);
+      handleOption2(el, Alpine2);
   }).before("bind");
-  Alpine.magic("listbox", (el) => {
-    let data = Alpine.$data(el);
+  Alpine2.magic("listbox", (el) => {
+    let data = Alpine2.$data(el);
     return {
       // @deprecated:
       get selected() {
@@ -1069,26 +1127,28 @@ function listbox_default(Alpine) {
       }
     };
   });
-  Alpine.magic("listboxOption", (el) => {
-    let data = Alpine.$data(el);
-    let optionEl = Alpine.findClosest(el, (i) => i.__optionKey);
+  Alpine2.magic("listboxOption", (el) => {
+    let data = Alpine2.$data(el);
+    let optionEl = Alpine2.findClosest(el, (i) => {
+      return i.hasAttribute("x-listbox:option");
+    });
     if (!optionEl)
-      throw "No x-combobox:option directive found...";
+      throw "No x-listbox:option directive found...";
     return {
       get isActive() {
-        return data.__context.isActiveKey(optionEl.__optionKey);
+        return data.__context.isActiveKey(Alpine2.$data(optionEl).__optionKey);
       },
       get isSelected() {
         return data.__isSelected(optionEl);
       },
       get isDisabled() {
-        return data.__context.isDisabled(optionEl.__optionKey);
+        return data.__context.isDisabled(Alpine2.$data(optionEl).__optionKey);
       }
     };
   });
 }
-function handleRoot4(el, Alpine) {
-  Alpine.bind(el, {
+function handleRoot4(el, Alpine2) {
+  Alpine2.bind(el, {
     // Setup...
     "x-id"() {
       return ["alpine-listbox-button", "alpine-listbox-options", "alpine-listbox-label"];
@@ -1112,22 +1172,22 @@ function handleRoot4(el, Alpine) {
         __orientation: "vertical",
         __hold: false,
         /**
-         * Comobox initialization...
+         * Listbox initialization...
          */
         init() {
-          this.__isMultiple = Alpine.extractProp(el, "multiple", false);
-          this.__isDisabled = Alpine.extractProp(el, "disabled", false);
-          this.__inputName = Alpine.extractProp(el, "name", null);
-          this.__compareBy = Alpine.extractProp(el, "by");
-          this.__orientation = Alpine.extractProp(el, "horizontal", false) ? "horizontal" : "vertical";
-          this.__context = generateContext(Alpine, this.__isMultiple, this.__orientation, () => this.$data.__activateSelectedOrFirst());
-          let defaultValue = Alpine.extractProp(el, "default-value", this.__isMultiple ? [] : null);
+          this.__isMultiple = Alpine2.extractProp(el, "multiple", false);
+          this.__isDisabled = Alpine2.extractProp(el, "disabled", false);
+          this.__inputName = Alpine2.extractProp(el, "name", null);
+          this.__compareBy = Alpine2.extractProp(el, "by");
+          this.__orientation = Alpine2.extractProp(el, "horizontal", false) ? "horizontal" : "vertical";
+          this.__context = generateContext(Alpine2, this.__isMultiple, this.__orientation, () => this.__activateSelectedOrFirst());
+          let defaultValue = Alpine2.extractProp(el, "default-value", this.__isMultiple ? [] : null);
           this.__value = defaultValue;
           queueMicrotask(() => {
-            Alpine.effect(() => {
-              this.__inputName && renderHiddenInputs(Alpine, this.$el, this.__inputName, this.__value);
+            Alpine2.effect(() => {
+              this.__inputName && renderHiddenInputs(Alpine2, this.$el, this.__inputName, this.__value);
             });
-            Alpine.effect(() => {
+            Alpine2.effect(() => {
               this.__resetInput();
             });
           });
@@ -1166,8 +1226,8 @@ function handleRoot4(el, Alpine) {
         __activateSelectedOrFirst(activateSelected = true) {
           if (!this.__isOpen)
             return;
-          if (this.__context.activeKey) {
-            this.__context.activateAndScrollToKey(this.__context.activeKey);
+          if (this.__context.getActiveKey()) {
+            this.__context.activateAndScrollToKey(this.__context.getActiveKey());
             return;
           }
           let firstSelectedValue;
@@ -1199,7 +1259,7 @@ function handleRoot4(el, Alpine) {
           let item = this.__context.getItemByEl(el2);
           if (!item)
             return false;
-          if (!item.value)
+          if (item.value === null || item.value === void 0)
             return false;
           return this.__hasSelected(item.value);
         },
@@ -1223,10 +1283,15 @@ function handleRoot4(el, Alpine) {
         __compare(a, b) {
           let by = this.__compareBy;
           if (!by)
-            by = (a2, b2) => Alpine.raw(a2) === Alpine.raw(b2);
+            by = (a2, b2) => Alpine2.raw(a2) === Alpine2.raw(b2);
           if (typeof by === "string") {
             let property = by;
-            by = (a2, b2) => a2[property] === b2[property];
+            by = (a2, b2) => {
+              if (!a2 || typeof a2 !== "object" || (!b2 || typeof b2 !== "object")) {
+                return Alpine2.raw(a2) === Alpine2.raw(b2);
+              }
+              return a2[property] === b2[property];
+            };
           }
           return by(a, b);
         }
@@ -1234,8 +1299,8 @@ function handleRoot4(el, Alpine) {
     }
   });
 }
-function handleLabel2(el, Alpine) {
-  Alpine.bind(el, {
+function handleLabel2(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-ref": "__label",
     ":id"() {
       return this.$id("alpine-listbox-label");
@@ -1245,8 +1310,8 @@ function handleLabel2(el, Alpine) {
     }
   });
 }
-function handleButton3(el, Alpine) {
-  Alpine.bind(el, {
+function handleButton3(el, Alpine2) {
+  Alpine2.bind(el, {
     // Setup...
     "x-ref": "__button",
     ":id"() {
@@ -1287,8 +1352,8 @@ function handleButton3(el, Alpine) {
     }
   });
 }
-function handleOptions2(el, Alpine) {
-  Alpine.bind(el, {
+function handleOptions2(el, Alpine2) {
+  Alpine2.bind(el, {
     // Setup...
     "x-ref": "__options",
     ":id"() {
@@ -1311,8 +1376,8 @@ function handleOptions2(el, Alpine) {
     },
     // Initialize...
     "x-init"() {
-      this.$data.__isStatic = Alpine.extractProp(this.$el, "static", false);
-      if (Alpine.bound(this.$el, "hold")) {
+      this.$data.__isStatic = Alpine2.extractProp(this.$el, "static", false);
+      if (Alpine2.bound(this.$el, "hold")) {
         this.$data.__hold = true;
       }
     },
@@ -1345,8 +1410,8 @@ function handleOptions2(el, Alpine) {
     }
   });
 }
-function handleOption2(el, Alpine) {
-  Alpine.bind(el, () => {
+function handleOption2(el, Alpine2) {
+  Alpine2.bind(el, () => {
     return {
       "x-id"() {
         return ["alpine-listbox-option"];
@@ -1365,14 +1430,15 @@ function handleOption2(el, Alpine) {
       // Initialize...
       "x-data"() {
         return {
+          "__optionKey": null,
           init() {
-            let key = el.__optionKey = (Math.random() + 1).toString(36).substring(7);
-            let value = Alpine.extractProp(el, "value");
-            let disabled = Alpine.extractProp(el, "disabled", false, false);
-            this.$data.__context.registerItem(key, el, value, disabled);
+            this.__optionKey = (Math.random() + 1).toString(36).substring(7);
+            let value = Alpine2.extractProp(el, "value");
+            let disabled = Alpine2.extractProp(el, "disabled", false, false);
+            this.$data.__context.registerItem(this.__optionKey, el, value, disabled);
           },
           destroy() {
-            this.$data.__context.unregisterItem(this.$el.__optionKey);
+            this.$data.__context.unregisterItem(this.__optionKey);
           }
         };
       },
@@ -1394,21 +1460,21 @@ function handleOption2(el, Alpine) {
 }
 
 // packages/ui/src/popover.js
-function popover_default(Alpine) {
-  Alpine.directive("popover", (el, directive) => {
+function popover_default(Alpine2) {
+  Alpine2.directive("popover", (el, directive) => {
     if (!directive.value)
-      handleRoot5(el, Alpine);
+      handleRoot5(el, Alpine2);
     else if (directive.value === "overlay")
-      handleOverlay2(el, Alpine);
+      handleOverlay2(el, Alpine2);
     else if (directive.value === "button")
-      handleButton4(el, Alpine);
+      handleButton4(el, Alpine2);
     else if (directive.value === "panel")
-      handlePanel3(el, Alpine);
+      handlePanel3(el, Alpine2);
     else if (directive.value === "group")
-      handleGroup(el, Alpine);
+      handleGroup(el, Alpine2);
   });
-  Alpine.magic("popover", (el) => {
-    let $data = Alpine.$data(el);
+  Alpine2.magic("popover", (el) => {
+    let $data = Alpine2.$data(el);
     return {
       get isOpen() {
         return $data.__isOpenState;
@@ -1422,8 +1488,8 @@ function popover_default(Alpine) {
     };
   });
 }
-function handleRoot5(el, Alpine) {
-  Alpine.bind(el, {
+function handleRoot5(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-id"() {
       return ["alpine-popover-button", "alpine-popover-panel"];
     },
@@ -1467,7 +1533,7 @@ function handleRoot5(el, Alpine) {
           setTimeout(() => el2.focus());
         },
         __contains(outer, inner) {
-          return !!Alpine.findClosest(inner, (el2) => el2.isSameNode(outer));
+          return !!Alpine2.findClosest(inner, (el2) => el2.isSameNode(outer));
         }
       };
     },
@@ -1487,8 +1553,8 @@ function handleRoot5(el, Alpine) {
     }
   });
 }
-function handleButton4(el, Alpine) {
-  Alpine.bind(el, {
+function handleButton4(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-ref": "button",
     ":id"() {
       return this.$id("alpine-popover-button");
@@ -1543,14 +1609,14 @@ function handleButton4(el, Alpine) {
     }
   });
 }
-function handlePanel3(el, Alpine) {
-  Alpine.bind(el, {
+function handlePanel3(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-init"() {
-      this.$data.__isStatic = Alpine.bound(this.$el, "static", false);
+      this.$data.__isStatic = Alpine2.bound(this.$el, "static", false);
       this.$data.__panelEl = this.$el;
     },
     "x-effect"() {
-      this.$data.__isOpen && Alpine.bound(el, "focus") && this.$focus.first();
+      this.$data.__isOpen && Alpine2.bound(el, "focus") && this.$focus.first();
     },
     "x-ref": "panel",
     ":id"() {
@@ -1574,7 +1640,7 @@ function handlePanel3(el, Alpine) {
       if (e.shiftKey && this.$focus.isFirst(e.target)) {
         e.preventDefault();
         e.stopPropagation();
-        Alpine.bound(el, "focus") ? this.$data.__close() : this.$data.__buttonEl.focus();
+        Alpine2.bound(el, "focus") ? this.$data.__close() : this.$data.__buttonEl.focus();
       } else if (!e.shiftKey && this.$focus.isLast(e.target)) {
         e.preventDefault();
         e.stopPropagation();
@@ -1582,13 +1648,13 @@ function handlePanel3(el, Alpine) {
         let buttonIdx = els.indexOf(this.$data.__buttonEl);
         let nextEls = els.splice(buttonIdx + 1).filter((el2) => !this.$el.contains(el2));
         nextEls[0].focus();
-        Alpine.bound(el, "focus") && this.$data.__close(false);
+        Alpine2.bound(el, "focus") && this.$data.__close(false);
       }
     }
   });
 }
-function handleGroup(el, Alpine) {
-  Alpine.bind(el, {
+function handleGroup(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-ref": "container",
     "x-data"() {
       return {
@@ -1597,8 +1663,8 @@ function handleGroup(el, Alpine) {
     }
   });
 }
-function handleOverlay2(el, Alpine) {
-  Alpine.bind(el, {
+function handleOverlay2(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-show"() {
       return this.$data.__isOpen;
     }
@@ -1606,19 +1672,19 @@ function handleOverlay2(el, Alpine) {
 }
 
 // packages/ui/src/menu.js
-function menu_default(Alpine) {
-  Alpine.directive("menu", (el, directive) => {
+function menu_default(Alpine2) {
+  Alpine2.directive("menu", (el, directive) => {
     if (!directive.value)
-      handleRoot6(el, Alpine);
+      handleRoot6(el, Alpine2);
     else if (directive.value === "items")
-      handleItems(el, Alpine);
+      handleItems(el, Alpine2);
     else if (directive.value === "item")
-      handleItem(el, Alpine);
+      handleItem(el, Alpine2);
     else if (directive.value === "button")
-      handleButton5(el, Alpine);
+      handleButton5(el, Alpine2);
   }).before("bind");
-  Alpine.magic("menuItem", (el) => {
-    let $data = Alpine.$data(el);
+  Alpine2.magic("menuItem", (el) => {
+    let $data = Alpine2.$data(el);
     return {
       get isActive() {
         return $data.__activeEl == $data.__itemEl;
@@ -1629,8 +1695,8 @@ function menu_default(Alpine) {
     };
   });
 }
-function handleRoot6(el, Alpine) {
-  Alpine.bind(el, {
+function handleRoot6(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-id"() {
       return ["alpine-menu-button", "alpine-menu-items"];
     },
@@ -1645,7 +1711,7 @@ function handleRoot6(el, Alpine) {
           let nextTick = (callback) => requestAnimationFrame(() => requestAnimationFrame(callback));
           nextTick(() => {
             this.$refs.__items.focus({ preventScroll: true });
-            activationStrategy && activationStrategy(Alpine, this.$refs.__items, (el2) => el2.__activate());
+            activationStrategy && activationStrategy(Alpine2, this.$refs.__items, (el2) => el2.__activate());
           });
         },
         __close(focusAfter = true) {
@@ -1653,7 +1719,7 @@ function handleRoot6(el, Alpine) {
           focusAfter && this.$nextTick(() => this.$refs.__button.focus({ preventScroll: true }));
         },
         __contains(outer, inner) {
-          return !!Alpine.findClosest(inner, (el2) => el2.isSameNode(outer));
+          return !!Alpine2.findClosest(inner, (el2) => el2.isSameNode(outer));
         }
       };
     },
@@ -1664,8 +1730,8 @@ function handleRoot6(el, Alpine) {
     }
   });
 }
-function handleButton5(el, Alpine) {
-  Alpine.bind(el, {
+function handleButton5(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-ref": "__button",
     "aria-haspopup": "true",
     ":aria-labelledby"() {
@@ -1701,8 +1767,8 @@ function handleButton5(el, Alpine) {
     }
   });
 }
-function handleItems(el, Alpine) {
-  Alpine.bind(el, {
+function handleItems(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-ref": "__items",
     "aria-orientation": "vertical",
     "role": "menu",
@@ -1723,31 +1789,31 @@ function handleItems(el, Alpine) {
       this.$data.__close();
     },
     "@keydown"(e) {
-      dom.search(Alpine, this.$refs.__items, e.key, (el2) => el2.__activate());
+      dom.search(Alpine2, this.$refs.__items, e.key, (el2) => el2.__activate());
     },
     "@keydown.down.stop.prevent"() {
       if (this.$data.__activeEl)
-        dom.next(Alpine, this.$data.__activeEl, (el2) => el2.__activate());
+        dom.next(Alpine2, this.$data.__activeEl, (el2) => el2.__activate());
       else
-        dom.first(Alpine, this.$refs.__items, (el2) => el2.__activate());
+        dom.first(Alpine2, this.$refs.__items, (el2) => el2.__activate());
     },
     "@keydown.up.stop.prevent"() {
       if (this.$data.__activeEl)
-        dom.previous(Alpine, this.$data.__activeEl, (el2) => el2.__activate());
+        dom.previous(Alpine2, this.$data.__activeEl, (el2) => el2.__activate());
       else
-        dom.last(Alpine, this.$refs.__items, (el2) => el2.__activate());
+        dom.last(Alpine2, this.$refs.__items, (el2) => el2.__activate());
     },
     "@keydown.home.stop.prevent"() {
-      dom.first(Alpine, this.$refs.__items, (el2) => el2.__activate());
+      dom.first(Alpine2, this.$refs.__items, (el2) => el2.__activate());
     },
     "@keydown.end.stop.prevent"() {
-      dom.last(Alpine, this.$refs.__items, (el2) => el2.__activate());
+      dom.last(Alpine2, this.$refs.__items, (el2) => el2.__activate());
     },
     "@keydown.page-up.stop.prevent"() {
-      dom.first(Alpine, this.$refs.__items, (el2) => el2.__activate());
+      dom.first(Alpine2, this.$refs.__items, (el2) => el2.__activate());
     },
     "@keydown.page-down.stop.prevent"() {
-      dom.last(Alpine, this.$refs.__items, (el2) => el2.__activate());
+      dom.last(Alpine2, this.$refs.__items, (el2) => el2.__activate());
     },
     "@keydown.escape.stop.prevent"() {
       this.$data.__close();
@@ -1765,14 +1831,14 @@ function handleItems(el, Alpine) {
     }
   });
 }
-function handleItem(el, Alpine) {
-  Alpine.bind(el, () => {
+function handleItem(el, Alpine2) {
+  Alpine2.bind(el, () => {
     return {
       "x-data"() {
         return {
           __itemEl: this.$el,
           init() {
-            let els = Alpine.raw(this.$data.__itemEls);
+            let els = Alpine2.raw(this.$data.__itemEls);
             let inserted = false;
             for (let i = 0; i < els.length; i++) {
               if (els[i].compareDocumentPosition(this.$el) & Node.DOCUMENT_POSITION_PRECEDING) {
@@ -1790,9 +1856,9 @@ function handleItem(el, Alpine) {
             this.$el.__deactivate = () => {
               this.$data.__activeEl = null;
             };
-            this.$el.__isDisabled = Alpine.reactive({ value: false });
+            this.$el.__isDisabled = Alpine2.reactive({ value: false });
             queueMicrotask(() => {
-              this.$el.__isDisabled.value = Alpine.bound(this.$el, "disabled", false);
+              this.$el.__isDisabled.value = Alpine2.bound(this.$el, "disabled", false);
             });
           },
           destroy() {
@@ -1821,88 +1887,88 @@ function handleItem(el, Alpine) {
   });
 }
 var dom = {
-  first(Alpine, parent, receive = (i) => i, fallback = () => {
+  first(Alpine2, parent, receive = (i) => i, fallback = () => {
   }) {
-    let first = Alpine.$data(parent).__itemEls[0];
+    let first = Alpine2.$data(parent).__itemEls[0];
     if (!first)
       return fallback();
     if (first.tagName.toLowerCase() === "template") {
-      return this.next(Alpine, first, receive);
+      return this.next(Alpine2, first, receive);
     }
     if (first.__isDisabled.value)
-      return this.next(Alpine, first, receive);
+      return this.next(Alpine2, first, receive);
     return receive(first);
   },
-  last(Alpine, parent, receive = (i) => i, fallback = () => {
+  last(Alpine2, parent, receive = (i) => i, fallback = () => {
   }) {
-    let last = Alpine.$data(parent).__itemEls.slice(-1)[0];
+    let last = Alpine2.$data(parent).__itemEls.slice(-1)[0];
     if (!last)
       return fallback();
     if (last.__isDisabled.value)
-      return this.previous(Alpine, last, receive);
+      return this.previous(Alpine2, last, receive);
     return receive(last);
   },
-  next(Alpine, el, receive = (i) => i, fallback = () => {
+  next(Alpine2, el, receive = (i) => i, fallback = () => {
   }) {
     if (!el)
       return fallback();
-    let els = Alpine.$data(el).__itemEls;
+    let els = Alpine2.$data(el).__itemEls;
     let next = els[els.indexOf(el) + 1];
     if (!next)
       return fallback();
     if (next.__isDisabled.value || next.tagName.toLowerCase() === "template")
-      return this.next(Alpine, next, receive, fallback);
+      return this.next(Alpine2, next, receive, fallback);
     return receive(next);
   },
-  previous(Alpine, el, receive = (i) => i, fallback = () => {
+  previous(Alpine2, el, receive = (i) => i, fallback = () => {
   }) {
     if (!el)
       return fallback();
-    let els = Alpine.$data(el).__itemEls;
+    let els = Alpine2.$data(el).__itemEls;
     let prev = els[els.indexOf(el) - 1];
     if (!prev)
       return fallback();
     if (prev.__isDisabled.value || prev.tagName.toLowerCase() === "template")
-      return this.previous(Alpine, prev, receive, fallback);
+      return this.previous(Alpine2, prev, receive, fallback);
     return receive(prev);
   },
   searchQuery: "",
   debouncedClearSearch: void 0,
-  clearSearch(Alpine) {
+  clearSearch(Alpine2) {
     if (!this.debouncedClearSearch) {
-      this.debouncedClearSearch = Alpine.debounce(function() {
+      this.debouncedClearSearch = Alpine2.debounce(function() {
         this.searchQuery = "";
       }, 350);
     }
     this.debouncedClearSearch();
   },
-  search(Alpine, parent, key, receiver) {
+  search(Alpine2, parent, key, receiver) {
     if (key.length > 1)
       return;
     this.searchQuery += key;
-    let els = Alpine.raw(Alpine.$data(parent).__itemEls);
+    let els = Alpine2.raw(Alpine2.$data(parent).__itemEls);
     let el = els.find((el2) => {
       return el2.textContent.trim().toLowerCase().startsWith(this.searchQuery);
     });
     el && !el.__isDisabled.value && receiver(el);
-    this.clearSearch(Alpine);
+    this.clearSearch(Alpine2);
   }
 };
 
 // packages/ui/src/switch.js
-function switch_default(Alpine) {
-  Alpine.directive("switch", (el, directive) => {
+function switch_default(Alpine2) {
+  Alpine2.directive("switch", (el, directive) => {
     if (directive.value === "group")
-      handleGroup2(el, Alpine);
+      handleGroup2(el, Alpine2);
     else if (directive.value === "label")
-      handleLabel3(el, Alpine);
+      handleLabel3(el, Alpine2);
     else if (directive.value === "description")
-      handleDescription2(el, Alpine);
+      handleDescription2(el, Alpine2);
     else
-      handleRoot7(el, Alpine);
+      handleRoot7(el, Alpine2);
   }).before("bind");
-  Alpine.magic("switch", (el) => {
-    let $data = Alpine.$data(el);
+  Alpine2.magic("switch", (el) => {
+    let $data = Alpine2.$data(el);
     return {
       get isChecked() {
         return $data.__value === true;
@@ -1910,8 +1976,8 @@ function switch_default(Alpine) {
     };
   });
 }
-function handleGroup2(el, Alpine) {
-  Alpine.bind(el, {
+function handleGroup2(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-id"() {
       return ["alpine-switch-label", "alpine-switch-description"];
     },
@@ -1924,16 +1990,16 @@ function handleGroup2(el, Alpine) {
     }
   });
 }
-function handleRoot7(el, Alpine) {
-  Alpine.bind(el, {
+function handleRoot7(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-modelable": "__value",
     "x-data"() {
       return {
         init() {
           queueMicrotask(() => {
-            this.__value = Alpine.bound(this.$el, "default-checked", false);
-            this.__inputName = Alpine.bound(this.$el, "name", false);
-            this.__inputValue = Alpine.bound(this.$el, "value", "on");
+            this.__value = Alpine2.bound(this.$el, "default-checked", false);
+            this.__inputName = Alpine2.bound(this.$el, "name", false);
+            this.__inputValue = Alpine2.bound(this.$el, "value", "on");
             this.__inputId = "alpine-switch-" + Date.now();
           });
         },
@@ -1993,8 +2059,8 @@ function handleRoot7(el, Alpine) {
     }
   });
 }
-function handleLabel3(el, Alpine) {
-  Alpine.bind(el, {
+function handleLabel3(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-init"() {
       this.$data.__hasLabel = true;
     },
@@ -2007,8 +2073,8 @@ function handleLabel3(el, Alpine) {
     }
   });
 }
-function handleDescription2(el, Alpine) {
-  Alpine.bind(el, {
+function handleDescription2(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-init"() {
       this.$data.__hasDescription = true;
     },
@@ -2019,19 +2085,19 @@ function handleDescription2(el, Alpine) {
 }
 
 // packages/ui/src/radio.js
-function radio_default(Alpine) {
-  Alpine.directive("radio", (el, directive) => {
+function radio_default(Alpine2) {
+  Alpine2.directive("radio", (el, directive) => {
     if (!directive.value)
-      handleRoot8(el, Alpine);
+      handleRoot8(el, Alpine2);
     else if (directive.value === "option")
-      handleOption3(el, Alpine);
+      handleOption3(el, Alpine2);
     else if (directive.value === "label")
-      handleLabel4(el, Alpine);
+      handleLabel4(el, Alpine2);
     else if (directive.value === "description")
-      handleDescription3(el, Alpine);
+      handleDescription3(el, Alpine2);
   }).before("bind");
-  Alpine.magic("radioOption", (el) => {
-    let $data = Alpine.$data(el);
+  Alpine2.magic("radioOption", (el) => {
+    let $data = Alpine2.$data(el);
     return {
       get isActive() {
         return $data.__option === $data.__active;
@@ -2048,16 +2114,16 @@ function radio_default(Alpine) {
     };
   });
 }
-function handleRoot8(el, Alpine) {
-  Alpine.bind(el, {
+function handleRoot8(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-modelable": "__value",
     "x-data"() {
       return {
         init() {
           queueMicrotask(() => {
-            this.__rootDisabled = Alpine.bound(el, "disabled", false);
-            this.__value = Alpine.bound(this.$el, "default-value", false);
-            this.__inputName = Alpine.bound(this.$el, "name", false);
+            this.__rootDisabled = Alpine2.bound(el, "disabled", false);
+            this.__value = Alpine2.bound(this.$el, "default-value", false);
+            this.__inputName = Alpine2.bound(this.$el, "name", false);
             this.__inputId = "alpine-radio-" + Date.now();
           });
           this.$nextTick(() => {
@@ -2096,7 +2162,7 @@ function handleRoot8(el, Alpine) {
           this.__value = value;
         },
         __addOption(option, el2, disabled) {
-          let options = Alpine.raw(this.__optionValues);
+          let options = Alpine2.raw(this.__optionValues);
           let els = options.map((i) => this.__optionElsByValue.get(i));
           let inserted = false;
           for (let i = 0; i < els.length; i++) {
@@ -2178,14 +2244,14 @@ function handleRoot8(el, Alpine) {
     }
   });
 }
-function handleOption3(el, Alpine) {
-  Alpine.bind(el, {
+function handleOption3(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-data"() {
       return {
         init() {
           queueMicrotask(() => {
-            this.__disabled = Alpine.bound(el, "disabled", false);
-            this.__option = Alpine.bound(el, "value");
+            this.__disabled = Alpine2.bound(el, "disabled", false);
+            this.__option = Alpine2.bound(el, "value");
             this.$data.__addOption(this.__option, this.$el, this.__disabled);
           });
         },
@@ -2240,8 +2306,8 @@ function handleOption3(el, Alpine) {
     }
   });
 }
-function handleLabel4(el, Alpine) {
-  Alpine.bind(el, {
+function handleLabel4(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-init"() {
       this.$data.__hasLabel = true;
     },
@@ -2250,8 +2316,8 @@ function handleLabel4(el, Alpine) {
     }
   });
 }
-function handleDescription3(el, Alpine) {
-  Alpine.bind(el, {
+function handleDescription3(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-init"() {
       this.$data.__hasDescription = true;
     },
@@ -2262,21 +2328,21 @@ function handleDescription3(el, Alpine) {
 }
 
 // packages/ui/src/tabs.js
-function tabs_default(Alpine) {
-  Alpine.directive("tabs", (el, directive) => {
+function tabs_default(Alpine2) {
+  Alpine2.directive("tabs", (el, directive) => {
     if (!directive.value)
-      handleRoot9(el, Alpine);
+      handleRoot9(el, Alpine2);
     else if (directive.value === "list")
-      handleList(el, Alpine);
+      handleList(el, Alpine2);
     else if (directive.value === "tab")
-      handleTab(el, Alpine);
+      handleTab(el, Alpine2);
     else if (directive.value === "panels")
-      handlePanels(el, Alpine);
+      handlePanels(el, Alpine2);
     else if (directive.value === "panel")
-      handlePanel4(el, Alpine);
+      handlePanel4(el, Alpine2);
   }).before("bind");
-  Alpine.magic("tab", (el) => {
-    let $data = Alpine.$data(el);
+  Alpine2.magic("tab", (el) => {
+    let $data = Alpine2.$data(el);
     return {
       get isSelected() {
         return $data.__selectedIndex === $data.__tabs.indexOf($data.__tabEl);
@@ -2286,8 +2352,8 @@ function tabs_default(Alpine) {
       }
     };
   });
-  Alpine.magic("panel", (el) => {
-    let $data = Alpine.$data(el);
+  Alpine2.magic("panel", (el) => {
+    let $data = Alpine2.$data(el);
     return {
       get isSelected() {
         return $data.__selectedIndex === $data.__panels.indexOf($data.__panelEl);
@@ -2295,19 +2361,19 @@ function tabs_default(Alpine) {
     };
   });
 }
-function handleRoot9(el, Alpine) {
-  Alpine.bind(el, {
+function handleRoot9(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-modelable": "__selectedIndex",
     "x-data"() {
       return {
         init() {
           queueMicrotask(() => {
-            let defaultIndex = this.__selectedIndex || Number(Alpine.bound(this.$el, "default-index", 0));
+            let defaultIndex = this.__selectedIndex || Number(Alpine2.bound(this.$el, "default-index", 0));
             let tabs = this.__activeTabs();
             let clamp = (number, min, max) => Math.min(Math.max(number, min), max);
             this.__selectedIndex = clamp(defaultIndex, 0, tabs.length - 1);
-            Alpine.effect(() => {
-              this.__manualActivation = Alpine.bound(this.$el, "manual", false);
+            Alpine2.effect(() => {
+              this.__manualActivation = Alpine2.bound(this.$el, "manual", false);
             });
           });
         },
@@ -2332,15 +2398,15 @@ function handleRoot9(el, Alpine) {
     }
   });
 }
-function handleList(el, Alpine) {
-  Alpine.bind(el, {
+function handleList(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-init"() {
       this.$data.__tabGroupEl = this.$el;
     }
   });
 }
-function handleTab(el, Alpine) {
-  Alpine.bind(el, {
+function handleTab(el, Alpine2) {
+  Alpine2.bind(el, {
     "x-init"() {
       if (this.$el.tagName.toLowerCase() === "button" && !this.$el.hasAttribute("type"))
         this.$el.type = "button";
@@ -2350,7 +2416,7 @@ function handleTab(el, Alpine) {
         init() {
           this.__tabEl = this.$el;
           this.$data.__addTab(this.$el);
-          this.__tabEl.__disabled = Alpine.bound(this.$el, "disabled", false);
+          this.__tabEl.__disabled = Alpine2.bound(this.$el, "disabled", false);
           this.__isDisabled = this.__tabEl.__disabled;
         },
         __tabEl: void 0,
@@ -2408,13 +2474,13 @@ function handleTab(el, Alpine) {
     }
   });
 }
-function handlePanels(el, Alpine) {
-  Alpine.bind(el, {
+function handlePanels(el, Alpine2) {
+  Alpine2.bind(el, {
     //
   });
 }
-function handlePanel4(el, Alpine) {
-  Alpine.bind(el, {
+function handlePanel4(el, Alpine2) {
+  Alpine2.bind(el, {
     ":tabindex"() {
       return this.$panel.isSelected ? 0 : -1;
     },
@@ -2434,19 +2500,21 @@ function handlePanel4(el, Alpine) {
 }
 
 // packages/ui/src/index.js
-function src_default(Alpine) {
-  combobox_default(Alpine);
-  dialog_default(Alpine);
-  disclosure_default(Alpine);
-  listbox_default(Alpine);
-  menu_default(Alpine);
-  switch_default(Alpine);
-  popover_default(Alpine);
-  radio_default(Alpine);
-  tabs_default(Alpine);
+function src_default(Alpine2) {
+  combobox_default(Alpine2);
+  dialog_default(Alpine2);
+  disclosure_default(Alpine2);
+  listbox_default(Alpine2);
+  menu_default(Alpine2);
+  switch_default(Alpine2);
+  popover_default(Alpine2);
+  radio_default(Alpine2);
+  tabs_default(Alpine2);
 }
 
 // packages/ui/builds/module.js
 var module_default = src_default;
 // Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {});
+0 && (module.exports = {
+  ui
+});

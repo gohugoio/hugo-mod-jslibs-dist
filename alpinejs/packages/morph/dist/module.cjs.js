@@ -20,7 +20,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var module_exports = {};
 __export(module_exports, {
   default: () => module_default,
-  morph: () => morph
+  morph: () => src_default
 });
 module.exports = __toCommonJS(module_exports);
 

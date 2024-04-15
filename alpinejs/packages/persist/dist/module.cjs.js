@@ -19,7 +19,8 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // packages/persist/builds/module.js
 var module_exports = {};
 __export(module_exports, {
-  default: () => module_default
+  default: () => module_default,
+  persist: () => src_default
 });
 module.exports = __toCommonJS(module_exports);
 
@@ -75,7 +76,10 @@ function storageHas(key, storage) {
   return storage.getItem(key) !== null;
 }
 function storageGet(key, storage) {
-  return JSON.parse(storage.getItem(key, storage));
+  let value = storage.getItem(key, storage);
+  if (value === void 0)
+    return;
+  return JSON.parse(value);
 }
 function storageSet(key, value, storage) {
   storage.setItem(key, JSON.stringify(value));
@@ -84,4 +88,6 @@ function storageSet(key, value, storage) {
 // packages/persist/builds/module.js
 var module_default = src_default;
 // Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {});
+0 && (module.exports = {
+  persist
+});

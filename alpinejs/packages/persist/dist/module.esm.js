@@ -50,7 +50,10 @@ function storageHas(key, storage) {
   return storage.getItem(key) !== null;
 }
 function storageGet(key, storage) {
-  return JSON.parse(storage.getItem(key, storage));
+  let value = storage.getItem(key, storage);
+  if (value === void 0)
+    return;
+  return JSON.parse(value);
 }
 function storageSet(key, value, storage) {
   storage.setItem(key, JSON.stringify(value));
@@ -59,5 +62,6 @@ function storageSet(key, value, storage) {
 // packages/persist/builds/module.js
 var module_default = src_default;
 export {
-  module_default as default
+  module_default as default,
+  src_default as persist
 };

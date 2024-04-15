@@ -904,7 +904,7 @@
           setTimeout(() => {
             if (!el2.hasAttribute("tabindex"))
               el2.setAttribute("tabindex", "0");
-            el2.focus({ preventScroll: this._noscroll });
+            el2.focus({ preventScroll: this.__noscroll });
           });
         }
       };
@@ -918,9 +918,13 @@
           allowOutsideClick: true,
           fallbackFocus: () => el
         };
-        let autofocusEl = el.querySelector("[autofocus]");
-        if (autofocusEl)
-          options.initialFocus = autofocusEl;
+        if (modifiers.includes("noautofocus")) {
+          options.initialFocus = false;
+        } else {
+          let autofocusEl = el.querySelector("[autofocus]");
+          if (autofocusEl)
+            options.initialFocus = autofocusEl;
+        }
         let trap = createFocusTrap(el, options);
         let undoInert = () => {
         };

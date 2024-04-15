@@ -1,6 +1,6 @@
 // packages/intersect/src/index.js
 function src_default(Alpine) {
-  Alpine.directive("intersect", (el, { value, expression, modifiers }, { evaluateLater, cleanup }) => {
+  Alpine.directive("intersect", Alpine.skipDuringClone((el, { value, expression, modifiers }, { evaluateLater, cleanup }) => {
     let evaluate = evaluateLater(expression);
     let options = {
       rootMargin: getRootMargin(modifiers),
@@ -18,7 +18,7 @@ function src_default(Alpine) {
     cleanup(() => {
       observer.disconnect();
     });
-  });
+  }));
 }
 function getThreshold(modifiers) {
   if (modifiers.includes("full"))
@@ -55,5 +55,6 @@ function getRootMargin(modifiers) {
 // packages/intersect/builds/module.js
 var module_default = src_default;
 export {
-  module_default as default
+  module_default as default,
+  src_default as intersect
 };

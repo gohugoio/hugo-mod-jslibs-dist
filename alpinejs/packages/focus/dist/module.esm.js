@@ -903,7 +903,7 @@ function src_default(Alpine) {
         setTimeout(() => {
           if (!el2.hasAttribute("tabindex"))
             el2.setAttribute("tabindex", "0");
-          el2.focus({ preventScroll: this._noscroll });
+          el2.focus({ preventScroll: this.__noscroll });
         });
       }
     };
@@ -917,9 +917,13 @@ function src_default(Alpine) {
         allowOutsideClick: true,
         fallbackFocus: () => el
       };
-      let autofocusEl = el.querySelector("[autofocus]");
-      if (autofocusEl)
-        options.initialFocus = autofocusEl;
+      if (modifiers.includes("noautofocus")) {
+        options.initialFocus = false;
+      } else {
+        let autofocusEl = el.querySelector("[autofocus]");
+        if (autofocusEl)
+          options.initialFocus = autofocusEl;
+      }
       let trap = createFocusTrap(el, options);
       let undoInert = () => {
       };
@@ -1002,7 +1006,8 @@ function disableScrolling() {
 // packages/focus/builds/module.js
 var module_default = src_default;
 export {
-  module_default as default
+  module_default as default,
+  src_default as focus
 };
 /*! Bundled license information:
 

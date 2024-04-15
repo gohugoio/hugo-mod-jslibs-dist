@@ -848,7 +848,8 @@ var require_focus_trap = __commonJS({
 // packages/focus/builds/module.js
 var module_exports = {};
 __export(module_exports, {
-  default: () => module_default
+  default: () => module_default,
+  focus: () => src_default
 });
 module.exports = __toCommonJS(module_exports);
 
@@ -961,7 +962,7 @@ function src_default(Alpine) {
         setTimeout(() => {
           if (!el2.hasAttribute("tabindex"))
             el2.setAttribute("tabindex", "0");
-          el2.focus({ preventScroll: this._noscroll });
+          el2.focus({ preventScroll: this.__noscroll });
         });
       }
     };
@@ -975,9 +976,13 @@ function src_default(Alpine) {
         allowOutsideClick: true,
         fallbackFocus: () => el
       };
-      let autofocusEl = el.querySelector("[autofocus]");
-      if (autofocusEl)
-        options.initialFocus = autofocusEl;
+      if (modifiers.includes("noautofocus")) {
+        options.initialFocus = false;
+      } else {
+        let autofocusEl = el.querySelector("[autofocus]");
+        if (autofocusEl)
+          options.initialFocus = autofocusEl;
+      }
       let trap = (0, import_focus_trap.createFocusTrap)(el, options);
       let undoInert = () => {
       };
@@ -1060,7 +1065,9 @@ function disableScrolling() {
 // packages/focus/builds/module.js
 var module_default = src_default;
 // Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {});
+0 && (module.exports = {
+  focus
+});
 /*! Bundled license information:
 
 tabbable/dist/index.js:

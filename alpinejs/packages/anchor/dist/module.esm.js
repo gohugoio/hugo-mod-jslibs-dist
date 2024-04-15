@@ -1253,5 +1253,6 @@ function getOptions(modifiers) {
 // packages/anchor/builds/module.js
 var module_default = src_default;
 export {
+  src_default as anchor,
   module_default as default
 };

@@ -1,6 +1,6 @@
 // packages/mask/src/index.js
 function src_default(Alpine) {
-  Alpine.directive("mask", (el, { value, expression }, { effect, evaluateLater }) => {
+  Alpine.directive("mask", (el, { value, expression }, { effect, evaluateLater, cleanup }) => {
     let templateFn = () => expression;
     let lastInputValue = "";
     queueMicrotask(() => {
@@ -28,8 +28,17 @@ function src_default(Alpine) {
       if (el._x_model)
         el._x_model.set(el.value);
     });
-    el.addEventListener("input", () => processInputValue(el));
-    el.addEventListener("blur", () => processInputValue(el, false));
+    const controller = new AbortController();
+    cleanup(() => {
+      controller.abort();
+    });
+    el.addEventListener("input", () => processInputValue(el), {
+      signal: controller.signal,
+      // Setting this as a capture phase listener to ensure it runs
+      // before wire:model or x-model added as a latent binding...
+      capture: true
+    });
+    el.addEventListener("blur", () => processInputValue(el, false), { signal: controller.signal });
     function processInputValue(el2, shouldRestoreCursor = true) {
       let input = el2.value;
       let template = templateFn(input);
@@ -166,5 +175,6 @@ function formatMoney(input, delimiter = ".", thousands, precision = 2) {
 var module_default = src_default;
 export {
   module_default as default,
+  src_default as mask,
   stripDown
 };

@@ -13,7 +13,7 @@ Here's a simple example of using `x-model` to bind the value of a text field to 
 <div x-data="{ message: '' }">
     <input type="text" x-model="message">
 
-    <span x-text="message">
+    <span x-text="message"></span>
 </div>
 ```
 
@@ -62,6 +62,7 @@ Now when the `<button>` is clicked, the input element's value will instantly be 
 * `<input type="checkbox">`
 * `<input type="radio">`
 * `<select>`
+* `<input type="range">`
 
 <a name="text-inputs"></a>
 ## Text inputs
@@ -282,6 +283,26 @@ Color: <span x-text="color"></span>
 </div>
 <!-- END_VERBATIM -->
 
+<a name="range-inputs"></a>
+## Range inputs
+
+```alpine
+<input type="range" x-model="range" min="0" max="1" step="0.1">
+
+<span x-text="range"></span>
+```
+
+<!-- START_VERBATIM -->
+<div class="demo">
+    <div x-data="{ range: 0.5 }">
+        <input type="range" x-model="range" min="0" max="1" step="0.1">
+
+        <div class="pt-4" x-text="range"></div>
+    </div>
+</div>
+<!-- END_VERBATIM -->
+
+
 <a name="modifiers"></a>
 ## Modifiers
 
@@ -358,7 +379,7 @@ By default, if an input has a value attribute, it is ignored by Alpine and inste
 But if a bound property is empty, then you can use an input's value attribute to populate the property by adding the `.fill` modifier.
 
 <div x-data="{ message: null }">
-  <input x-model.fill="message" value="This is the default message.">
+  <input type="text" x-model.fill="message" value="This is the default message.">
 </div>
 
 <a name="programmatic access"></a>
